@@ -10,6 +10,11 @@ enum SidebarItem: Hashable {
     case settings
 }
 
+/// The tabs of the Settings view.
+enum SettingsTab: Hashable {
+    case general, dialog, watcher, jamf
+}
+
 /// A rule being edited, plus UI-only state that isn't part of the rule file.
 struct RuleDraft: Identifiable, Equatable {
     let id: UUID
@@ -40,6 +45,8 @@ enum ExportFormat {
 final class ProjectStore {
     var drafts: [RuleDraft] = []
     var selection: SidebarItem? = .home
+    /// The Settings tab being shown, shared by the ⌘, window and the sidebar's Settings item.
+    var settingsTab: SettingsTab = .general
     private(set) var folderURL: URL?
     var settings: RuleSettings {
         didSet { persist() }
@@ -68,6 +75,12 @@ final class ProjectStore {
         } else {
             settings = RuleSettings()
         }
+    }
+
+    /// Shows Settings in the main window, opened on `tab` (e.g. the editor's "Manage Presets…").
+    func showSettings(_ tab: SettingsTab) {
+        settingsTab = tab
+        selection = .settings
     }
 
     private func persist() {

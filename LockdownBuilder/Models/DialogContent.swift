@@ -127,27 +127,99 @@ enum DialogMarkdown {
     }
 }
 
-/// Starting points for DialogMessage. Always editable; applying one replaces the message.
-enum DialogPreset: String, CaseIterable, Identifiable {
-    case appBlocked = "App blocked"
-    case featureBlocked = "Feature blocked"
-    case policyNotice = "Policy notice"
+/// A starting point for `DialogMessage`, managed in Settings → Dialog and offered by the editor's Presets menu.
+/// Applying one replaces the rule's message; the result is always editable. Stored in `RuleSettings.dialogPresets`.
+struct DialogPreset: Identifiable, Codable, Hashable, Sendable {
+    var id: UUID
+    var name: String
+    /// Markdown, like `DialogMessage`. `{{appName}}` is replaced when the preset is applied; the watcher's own
+    /// variables (`{{companyName}}` …) are kept so the watcher fills them in when the dialog is shown.
+    var message: String
 
-    var id: String { rawValue }
-
-    /// The company name is the `{{companyName}}` variable, filled in by the watcher.
-    func message(appName: String) -> String {
-        let app = appName.trimmingCharacters(in: .whitespaces).isEmpty ? "This app" : appName
-        let org = MessageVariable.companyName.token
-        switch self {
-        case .appBlocked:
-            return "# \(app) Blocked\n\n\(app) isn't available on this Mac.\n\nThis is a policy of \(org). If you believe you need access, please contact the Service Desk."
-        case .featureBlocked:
-            return "# Feature Unavailable\n\nThis feature of \(app) has been turned off on this Mac by \(org).\n\nIf you need it for your work, please contact the Service Desk."
-        case .policyNotice:
-            return "# Policy Notice\n\nThis action isn't permitted under the acceptable use policy of \(org).\n\nIf you have questions, please contact the Service Desk."
-        }
+    init(id: UUID = UUID(), name: String, message: String) {
+        self.id = id
+        self.name = name
+        self.message = message
     }
+
+    /// Replaced when the preset is applied (not by the watcher): the rule's process name, or "This app".
+    static let appNameToken = "{{appName}}"
+    static let appNameFallback = "This app"
+
+    /// The message for a rule whose process is `appName` (empty for a notify-only rule).
+    func message(appName: String) -> String {
+        let app = appName.trimmingCharacters(in: .whitespaces)
+        return message.replacingOccurrences(of: Self.appNameToken, with: app.isEmpty ? Self.appNameFallback : app)
+    }
+
+    /// The `# Title` line, or the first line of text, for lists.
+    var summaryLine: String {
+        let parts = DialogMessageParts.split(message)
+        if !parts.title.isEmpty { return parts.title }
+        return parts.body.components(separatedBy: .newlines).first { !$0.trimmingCharacters(in: .whitespaces).isEmpty } ?? ""
+    }
+
+    /// Why the preset can't be saved as it is. `others` are the presets it will sit beside (itself included or not).
+    func issues(among others: [DialogPreset]) -> [String] {
+        var out: [String] = []
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        if trimmed.isEmpty {
+            out.append("Give the preset a name.")
+        } else if others.contains(where: { $0.id != id && Self.sameName($0.name, trimmed) }) {
+            out.append("Another preset is already called “\(trimmed)”.")
+        }
+        if message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            out.append("Write the message the preset should insert.")
+        }
+        return out
+    }
+
+    /// A copy with its own identity and a name no other preset uses ("App blocked copy", then "… copy 2").
+    func duplicate(among existing: [DialogPreset]) -> DialogPreset {
+        DialogPreset(name: Self.uniqueName("\(name.trimmingCharacters(in: .whitespaces)) copy", among: existing), message: message)
+    }
+
+    /// `base`, or `base 2`, `base 3`… when a preset already has that name (ignoring case and outer spaces).
+    static func uniqueName(_ base: String, among existing: [DialogPreset]) -> String {
+        let base = base.trimmingCharacters(in: .whitespaces)
+        func taken(_ candidate: String) -> Bool { existing.contains { sameName($0.name, candidate) } }
+        if !taken(base) { return base }
+        var n = 2
+        while taken("\(base) \(n)") { n += 1 }
+        return "\(base) \(n)"
+    }
+
+    private static func sameName(_ a: String, _ b: String) -> Bool {
+        a.trimmingCharacters(in: .whitespaces).caseInsensitiveCompare(b.trimmingCharacters(in: .whitespaces)) == .orderedSame
+    }
+
+    /// A preset made from a rule's message. The rule's process name becomes `{{appName}}` so the preset fits
+    /// other rules; watcher variables already in the message are kept as typed.
+    static func generalizing(_ message: String, appName: String, name: String) -> DialogPreset {
+        let app = appName.trimmingCharacters(in: .whitespaces)
+        let template = app.isEmpty ? message : message.replacingOccurrences(of: app, with: appNameToken)
+        return DialogPreset(name: name, message: template)
+    }
+
+    // MARK: Built-in
+
+    /// The three presets every installation starts with. Fixed IDs let "Restore Built-in Presets" see which are missing.
+    static let builtIn = [appBlocked, featureBlocked, policyNotice]
+
+    static let appBlocked = DialogPreset(
+        id: UUID(uuidString: "5D1F0C3A-7B2E-4E8A-9C44-1A6B3F9D2E01")!,
+        name: "App blocked",
+        message: "# \(appNameToken) Blocked\n\n\(appNameToken) isn't available on this Mac.\n\nThis is a policy of \(MessageVariable.companyName.token). If you believe you need access, please contact the Service Desk.")
+
+    static let featureBlocked = DialogPreset(
+        id: UUID(uuidString: "5D1F0C3A-7B2E-4E8A-9C44-1A6B3F9D2E02")!,
+        name: "Feature blocked",
+        message: "# Feature Unavailable\n\nThis feature of \(appNameToken) has been turned off on this Mac by \(MessageVariable.companyName.token).\n\nIf you need it for your work, please contact the Service Desk.")
+
+    static let policyNotice = DialogPreset(
+        id: UUID(uuidString: "5D1F0C3A-7B2E-4E8A-9C44-1A6B3F9D2E03")!,
+        name: "Policy notice",
+        message: "# Policy Notice\n\nThis action isn't permitted under the acceptable use policy of \(MessageVariable.companyName.token).\n\nIf you have questions, please contact the Service Desk.")
 }
 
 /// Plain-language description of what the watcher will do with a rule. Never runs anything.

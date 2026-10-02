@@ -34,7 +34,7 @@ struct DialogMessagePartsTests {
 
     @Test func everyTemplateAndPresetSurvivesSplitAndJoin() {
         var messages = BuiltInTemplates.all.map { $0.rule(settings: RuleSettings()).dialogMessage }
-        messages += DialogPreset.allCases.map { $0.message(appName: "App") }
+        messages += DialogPreset.builtIn.map { $0.message(appName: "App") }
         for message in messages {
             let parts = DialogMessageParts.split(message)
             #expect(!parts.title.isEmpty)

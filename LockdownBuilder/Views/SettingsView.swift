@@ -20,17 +20,17 @@ struct SettingsView: View {
     }
 
     private var tabs: some View {
-        TabView {
-            Tab("General", systemImage: "gearshape") {
+        TabView(selection: $store.settingsTab) {
+            Tab("General", systemImage: "gearshape", value: .general) {
                 GeneralSettings(store: store)
             }
-            Tab("Dialog", systemImage: "macwindow") {
+            Tab("Dialog", systemImage: "macwindow", value: .dialog) {
                 DialogSettings(store: store)
             }
-            Tab("Watcher", systemImage: "shield.lefthalf.filled") {
+            Tab("Watcher", systemImage: "shield.lefthalf.filled", value: .watcher) {
                 WatcherSettings(store: store)
             }
-            Tab("Jamf Pro", systemImage: "icloud.and.arrow.up") {
+            Tab("Jamf Pro", systemImage: "icloud.and.arrow.up", value: .jamf) {
                 JamfSettings(store: store)
             }
         }
@@ -112,6 +112,9 @@ private func caption(_ text: String) -> some View {
 
 private struct DialogSettings: View {
     @Bindable var store: ProjectStore
+    /// The preset open in the editor sheet: an existing one, a fresh copy, or a new blank one. Saved only on Save.
+    @State private var editingPreset: DialogPreset?
+    @State private var removingPreset: DialogPreset?
 
     var body: some View {
         Form {
@@ -132,6 +135,47 @@ private struct DialogSettings: View {
             } footer: {
                 caption("Passed to swiftDialog as --icon and --iconsize. None shows the watcher's standard red shield. A rule can turn the icon off.")
             }
+            Section {
+                ForEach(store.settings.dialogPresets) { preset in
+                    presetRow(preset)
+                }
+                if store.settings.dialogPresets.isEmpty {
+                    Text("No presets. The editor's Presets menu only offers Save Message as Preset.")
+                        .font(.callout).foregroundStyle(.secondary)
+                }
+                HStack {
+                    Button("New Preset…", systemImage: "plus") {
+                        editingPreset = DialogPreset(name: "", message: "")
+                    }
+                    Spacer()
+                    Button("Restore Built-in Presets") { store.settings.restoreBuiltInPresets() }
+                        .disabled(store.settings.missingBuiltInPresets.isEmpty)
+                        .help("Adds back the built-in presets that were removed. Edited ones are kept as they are.")
+                }
+            } header: {
+                Text("Message presets")
+            } footer: {
+                caption("Starting points offered by the editor's Presets menu; applying one replaces the rule's message. \(DialogPreset.appNameToken) becomes the rule's process name (or “\(DialogPreset.appNameFallback)”) when a preset is applied. Watcher variables such as {{companyName}} stay in the message and are filled in when the dialog is shown.")
+            }
+            .sheet(item: $editingPreset) { preset in
+                PresetEditor(store: store, preset: preset)
+            }
+            .confirmationDialog(
+                "Remove the “\(removingPreset?.name ?? "")” preset?",
+                isPresented: Binding(get: { removingPreset != nil }, set: { if !$0 { removingPreset = nil } }),
+                titleVisibility: .visible
+            ) {
+                Button("Remove", role: .destructive) {
+                    if let preset = removingPreset {
+                        store.settings.dialogPresets.removeAll { $0.id == preset.id }
+                    }
+                    removingPreset = nil
+                }
+            } message: {
+                Text(removingPreset.map { DialogPreset.builtIn.contains($0) } == true
+                     ? "Rules keep their messages; a preset is only a starting point. Restore Built-in Presets brings it back."
+                     : "Rules keep their messages; a preset is only a starting point. This can't be undone.")
+            }
             Section("Preview") {
                 DialogPreviewView(
                     rule: RuleModel(name: "example", killProcess: "Example",
@@ -141,6 +185,26 @@ private struct DialogSettings: View {
             }
         }
         .formStyle(.grouped)
+    }
+
+    private func presetRow(_ preset: DialogPreset) -> some View {
+        HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(preset.name)
+                Text(preset.summaryLine)
+                    .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            }
+            Spacer()
+            Button("Edit…") { editingPreset = preset }
+                .accessibilityLabel("Edit \(preset.name)")
+            Button("Duplicate") { editingPreset = preset.duplicate(among: store.settings.dialogPresets) }
+                .help("Opens a copy to change; the copy is kept when you save it")
+                .accessibilityLabel("Duplicate \(preset.name)")
+            Button(role: .destructive) { removingPreset = preset } label: { Image(systemName: "trash") }
+                .help("Remove this preset")
+                .accessibilityLabel("Remove \(preset.name)")
+        }
+        .controlSize(.small)
     }
 
     /// A slider over an optional size: "Default" leaves the flag out so swiftDialog decides.
@@ -177,6 +241,82 @@ private struct DialogSettings: View {
                   systemImage: "exclamationmark.triangle")
                 .font(.caption).foregroundStyle(.orange)
         }
+    }
+}
+
+// MARK: - Message preset editor
+
+/// One preset in a sheet: name, the message editor and a preview as a rule for an example app would show it.
+/// Nothing is stored until Save.
+private struct PresetEditor: View {
+    @Bindable var store: ProjectStore
+    @State var preset: DialogPreset
+    @Environment(\.dismiss) private var dismiss
+
+    private static let exampleApp = "Example App"
+
+    private var isNew: Bool { !store.settings.dialogPresets.contains { $0.id == preset.id } }
+    private var issues: [String] { preset.issues(among: store.settings.dialogPresets) }
+
+    private var exampleRule: RuleModel {
+        RuleModel(name: "example", killProcess: Self.exampleApp, dialogMessage: preset.message(appName: Self.exampleApp))
+    }
+
+    /// `{{appName}}` first, then the watcher's variables. Only the company name has a value here; the rest depend on the rule.
+    private var variables: [MessageEditorVariable] {
+        [MessageEditorVariable(token: DialogPreset.appNameToken,
+                               summary: "Process name of the rule the preset is applied to (or “\(DialogPreset.appNameFallback)”)")]
+            + MessageVariable.allCases.map {
+                MessageEditorVariable(token: $0.token, summary: $0.summary,
+                                      value: $0 == .companyName ? store.settings.orgNameFriendly : "")
+            }
+    }
+
+    var body: some View {
+        // Fixed size with a scrolling body: the sheet must fit inside the 560 × 560 pt Settings window as well as the main window.
+        VStack(alignment: .leading, spacing: 0) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    Text(isNew ? "New Preset" : "Edit Preset")
+                        .font(.title2.weight(.semibold))
+                    VStack(alignment: .leading, spacing: 6) {
+                        FieldLabel(title: "Name")
+                        TextField("Name", text: $preset.name, prompt: Text("e.g. App blocked"))
+                            .labelsHidden()
+                            .accessibilityLabel("Preset name")
+                    }
+                    MessageEditor(
+                        message: $preset.message, hasError: false, variables: variables,
+                        footer: "Select text, then use the buttons above. \(DialogPreset.appNameToken) is replaced by the rule's process name when the preset is applied; {{companyName}}, {{ruleName}} and {{killProcess}} stay in the message for the watcher to fill in."
+                    ) { EmptyView() }
+                    VStack(alignment: .leading, spacing: 6) {
+                        FieldLabel(title: "Preview", subtitle: "As a rule that quits “\(Self.exampleApp)” would show it.")
+                        DialogPreviewView(rule: exampleRule, settings: store.settings)
+                            .frame(maxHeight: 180)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+                .padding(20)
+            }
+            Divider()
+            HStack {
+                ForEach(issues, id: \.self) { issue in
+                    Label(issue, systemImage: "exclamationmark.circle").font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button("Cancel", role: .cancel) { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                Button(isNew ? "Add Preset" : "Save") {
+                    store.settings.savePreset(preset)
+                    dismiss()
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(!issues.isEmpty)
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 14)
+        }
+        .frame(width: 520, height: 540)
     }
 }
 

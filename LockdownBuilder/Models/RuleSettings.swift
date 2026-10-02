@@ -27,6 +27,8 @@ struct RuleSettings: Equatable, Codable, Sendable {
     var watcherScriptName = ""
     /// Optional Apple Intelligence features (draft message, suggest predicate). Nothing depends on them.
     var aiEnabled = true
+    /// The message presets the editor's Presets menu offers, managed in Settings → Dialog. Starts as the built-ins.
+    var dialogPresets = DialogPreset.builtIn
 
     init() {}
 
@@ -47,6 +49,26 @@ struct RuleSettings: Equatable, Codable, Sendable {
         profileNames = try c.decodeIfPresent([String: String].self, forKey: .profileNames) ?? d.profileNames
         watcherScriptName = try c.decodeIfPresent(String.self, forKey: .watcherScriptName) ?? d.watcherScriptName
         aiEnabled = try c.decodeIfPresent(Bool.self, forKey: .aiEnabled) ?? d.aiEnabled
+        dialogPresets = try c.decodeIfPresent([DialogPreset].self, forKey: .dialogPresets) ?? d.dialogPresets
+    }
+
+    /// Built-in presets that have been removed (edited ones still count as present).
+    var missingBuiltInPresets: [DialogPreset] {
+        DialogPreset.builtIn.filter { builtIn in !dialogPresets.contains { $0.id == builtIn.id } }
+    }
+
+    /// Adds back the removed built-in presets, at the end; presets that were edited are left as they are.
+    mutating func restoreBuiltInPresets() {
+        dialogPresets += missingBuiltInPresets
+    }
+
+    /// Replaces the preset with the same id, or appends a new one.
+    mutating func savePreset(_ preset: DialogPreset) {
+        if let index = dialogPresets.firstIndex(where: { $0.id == preset.id }) {
+            dialogPresets[index] = preset
+        } else {
+            dialogPresets.append(preset)
+        }
     }
 
     /// `<ORG_PLIST_DOMAIN>.<PREFERENCE>.<rule-name>`

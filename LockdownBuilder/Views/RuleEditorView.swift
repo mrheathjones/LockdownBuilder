@@ -87,6 +87,8 @@ private struct RuleForm: View {
     let store: ProjectStore
     @Binding var draft: RuleDraft
     @State private var pendingPreset: DialogPreset?
+    @State private var savingPreset = false
+    @State private var newPresetName = ""
     @State private var pickingTarget = false
     @State private var discovering = false
     @State private var liveTesting = false
@@ -162,7 +164,7 @@ private struct RuleForm: View {
             }
         }
         .confirmationDialog(
-            "Replace the message with the “\(pendingPreset?.rawValue ?? "")” preset?",
+            "Replace the message with the “\(pendingPreset?.name ?? "")” preset?",
             isPresented: Binding(get: { pendingPreset != nil }, set: { if !$0 { pendingPreset = nil } })
         ) {
             Button("Replace Message") {
@@ -174,6 +176,28 @@ private struct RuleForm: View {
         } message: {
             Text("The preset is a starting point; edit it freely afterwards.")
         }
+        .alert("Save Message as Preset", isPresented: $savingPreset) {
+            TextField("Preset name", text: $newPresetName)
+            Button("Save") { saveMessageAsPreset() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(saveAsPresetExplanation)
+        }
+    }
+
+    private var saveAsPresetExplanation: String {
+        let shared = "Watcher variables such as {{companyName}} stay as typed. Presets are managed in Settings → Dialog."
+        if let app = draft.rule.killProcess?.trimmingCharacters(in: .whitespaces), !app.isEmpty {
+            return "“\(app)” in the message becomes \(DialogPreset.appNameToken), so the preset fits other rules. " + shared
+        }
+        return shared
+    }
+
+    private func saveMessageAsPreset() {
+        let base = newPresetName.trimmingCharacters(in: .whitespaces)
+        let name = DialogPreset.uniqueName(base.isEmpty ? "New preset" : base, among: store.settings.dialogPresets)
+        store.settings.dialogPresets.append(
+            DialogPreset.generalizing(draft.rule.dialogMessage, appName: draft.rule.killProcess ?? "", name: name))
     }
 
     private func step(_ number: Int, _ title: String, @ViewBuilder content: () -> some View) -> some View {
@@ -531,12 +555,23 @@ private struct RuleForm: View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 10) {
                 MessageEditor(message: $draft.rule.dialogMessage, hasError: hasError(.dialogMessage),
-                              variables: MessageVariable.allCases.map { ($0, $0.value(rule: draft.rule, settings: store.settings)) }) {
+                              variables: MessageEditorVariable.watcher(rule: draft.rule, settings: store.settings)) {
                     aiDraftButton
                     Menu("Presets") {
-                        ForEach(DialogPreset.allCases) { preset in
-                            Button(preset.rawValue) { pendingPreset = preset }
+                        if store.settings.dialogPresets.isEmpty {
+                            Text("No presets")
                         }
+                        ForEach(store.settings.dialogPresets) { preset in
+                            Button(preset.name) { pendingPreset = preset }
+                        }
+                        Divider()
+                        Button("Save Message as Preset…") {
+                            let title = DialogMessageParts.split(draft.rule.dialogMessage).title
+                            newPresetName = DialogPreset.uniqueName(title.isEmpty ? "New preset" : title, among: store.settings.dialogPresets)
+                            savingPreset = true
+                        }
+                        .disabled(draft.rule.dialogMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        Button("Manage Presets…") { store.showSettings(.dialog) }
                     }
                     .fixedSize()
                     .accessibilityLabel("Message presets")
@@ -786,125 +821,6 @@ private struct RuleForm: View {
         case .notifyOnly:
             "Driven by a unified-log line like an event rule, but nothing is quit: the watcher only shows the dialog. Use it to explain something that is already enforced elsewhere (e.g. a DDM policy that blocks external storage)."
         }
-    }
-}
-
-// MARK: - Message editor
-
-/// Title and body as separate fields over one `DialogMessage`, with a toolbar that writes the Markdown
-/// for the selected text.
-private struct MessageEditor<Accessory: View>: View {
-    @Binding var message: String
-    let hasError: Bool
-    /// The variables the watcher fills in, with their current values for the menu.
-    let variables: [(variable: MessageVariable, value: String)]
-    @ViewBuilder let accessory: Accessory
-    @State private var title: String
-    @State private var text: String
-    @State private var selection: TextSelection?
-
-    init(message: Binding<String>, hasError: Bool, variables: [(variable: MessageVariable, value: String)],
-         @ViewBuilder accessory: () -> Accessory) {
-        _message = message
-        self.hasError = hasError
-        self.variables = variables
-        self.accessory = accessory()
-        let parts = DialogMessageParts.split(message.wrappedValue)
-        _title = State(initialValue: parts.title)
-        _text = State(initialValue: parts.body)
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            VStack(alignment: .leading, spacing: 6) {
-                FieldLabel(title: "Title", key: "DialogMessage (# first line)")
-                TextField("Title", text: $title, prompt: Text("None"))
-                    .labelsHidden()
-                    .font(.system(size: 14, weight: .semibold))
-                    .accessibilityLabel("Dialog title")
-            }
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    FieldLabel(title: "Message", key: "DialogMessage")
-                    Spacer()
-                    accessory
-                }
-                .controlSize(.small)
-                toolbar
-                TextEditor(text: $text, selection: $selection)
-                    .font(.system(size: 13))
-                    .scrollContentBackground(.hidden)
-                    .padding(6)
-                    .frame(minHeight: 130)
-                    .background(.background, in: RoundedRectangle(cornerRadius: 6))
-                    .overlay(RoundedRectangle(cornerRadius: 6)
-                        .strokeBorder(hasError ? AnyShapeStyle(Color.red.opacity(0.5)) : AnyShapeStyle(.quaternary)))
-                    .accessibilityLabel("Dialog message")
-                Text("Select text, then use the buttons above. The message is stored as Markdown; blank lines make paragraphs. Variables such as {{companyName}} are filled in by the watcher (\(RuleModel.variablesAndInfoButtonMinimumWatcherVersion) or later); the preview shows their values.")
-                    .font(.system(size: 11)).foregroundStyle(.secondary)
-            }
-        }
-        .onChange(of: title) { message = DialogMessageParts.join(title: title, body: text) }
-        .onChange(of: text) { message = DialogMessageParts.join(title: title, body: text) }
-        .onChange(of: message) {
-            // A preset or an AI draft replaced the message from outside: show its parts.
-            guard DialogMessageParts.join(title: title, body: text) != message else { return }
-            (title, text) = DialogMessageParts.split(message)
-            selection = nil
-        }
-    }
-
-    private var toolbar: some View {
-        HStack(spacing: 2) {
-            style("Bold", "bold", shortcut: "b") { MarkdownStyling.toggleInline("**", in: $0, range: $1) }
-            style("Italic", "italic", shortcut: "i") { MarkdownStyling.toggleInline("_", in: $0, range: $1) }
-            style("Strikethrough", "strikethrough") { MarkdownStyling.toggleInline("~~", in: $0, range: $1) }
-            style("Code", "chevron.left.forwardslash.chevron.right") { MarkdownStyling.toggleInline("`", in: $0, range: $1) }
-            Divider().frame(height: 14).padding(.horizontal, 4)
-            style("Heading", "textformat.size") { MarkdownStyling.toggleLinePrefix("## ", in: $0, range: $1) }
-            style("Bulleted list", "list.bullet") { MarkdownStyling.toggleLinePrefix("- ", in: $0, range: $1) }
-            style("Link", "link") { MarkdownStyling.link(in: $0, range: $1) }
-            Divider().frame(height: 14).padding(.horizontal, 4)
-            Menu {
-                ForEach(variables, id: \.variable) { entry in
-                    Button("\(entry.variable.token) — \(entry.variable.summary)\(entry.value.isEmpty ? "" : " (\(entry.value))")") {
-                        apply { MarkdownStyling.insert(entry.variable.token, in: $0, range: $1) }
-                    }
-                }
-            } label: {
-                // The label goes on the image: a Menu reports its label view's name, not its own.
-                Image(systemName: "curlybraces").frame(width: 24, height: 20).contentShape(Rectangle())
-                    .accessibilityLabel("Insert variable")
-            }
-            .menuIndicator(.hidden)
-            .fixedSize()
-            .help("Insert a variable the watcher fills in when the dialog is shown")
-            Spacer()
-        }
-        .buttonStyle(.borderless)
-    }
-
-    /// Runs a Markdown edit on the selection (or at the end of the text when nothing is selected).
-    private func apply(_ edit: (String, Range<String.Index>) -> MarkdownStyling.Edit) {
-        var range = text.endIndex..<text.endIndex
-        if case .selection(let selected) = selection?.indices, selected.upperBound <= text.endIndex {
-            range = selected
-        }
-        let result = edit(text, range)
-        text = result.text
-        selection = TextSelection(range: result.selection)
-    }
-
-    private func style(_ name: String, _ symbol: String, shortcut: KeyEquivalent? = nil,
-                       _ edit: @escaping (String, Range<String.Index>) -> MarkdownStyling.Edit) -> some View {
-        Button {
-            apply(edit)
-        } label: {
-            Image(systemName: symbol).frame(width: 24, height: 20).contentShape(Rectangle())
-        }
-        .keyboardShortcut(shortcut.map { KeyboardShortcut($0) })
-        .help(shortcut.map { "\(name) (⌘\(String($0.character).uppercased()))" } ?? name)
-        .accessibilityLabel(name)
     }
 }
 

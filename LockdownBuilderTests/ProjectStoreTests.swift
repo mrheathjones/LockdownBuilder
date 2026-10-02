@@ -21,6 +21,21 @@ struct ProjectStoreTests {
         }
     }
 
+    @Test func presetsPersistWithTheSettingsAndManagePresetsOpensTheDialogTab() throws {
+        let suite = "ProjectStoreTests.presets.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        let first = ProjectStore(defaults: defaults)
+        first.settings.dialogPresets.append(DialogPreset(name: "Mine", message: "# Hi {{appName}}"))
+        first.settings.dialogPresets.removeAll { $0.id == DialogPreset.appBlocked.id }
+        let second = ProjectStore(defaults: defaults)
+        #expect(second.settings.dialogPresets == first.settings.dialogPresets)
+        #expect(second.settings.missingBuiltInPresets == [DialogPreset.appBlocked])
+        #expect(second.settingsTab == .general)
+        second.showSettings(.dialog)
+        #expect(second.selection == .settings)
+        #expect(second.settingsTab == .dialog)
+    }
+
     @Test func loadsAFolderOfRulePlistsAndSkipsOthers() throws {
         try copySamples()
         store.loadFolder(folder)

@@ -9,8 +9,8 @@ quitting them, but tells the user why in a prompt you design: your wording, your
 can take them somewhere useful such as Self Service. It can also act on a single action inside an app (for example
 opening one System Settings pane) rather than only on the whole app.
 
-> **Status:** version 1.2. Rule editor, validation, exports, dialog designer, test harness, target picker, predicate
-> discovery, Jamf Pro publishing, and optional on-device Apple Intelligence help.
+> **Status:** version 1.3. Rule editor, validation, exports, dialog designer with editable message presets, test
+> harness, target picker, predicate discovery, Jamf Pro publishing, and optional on-device Apple Intelligence help.
 
 ## Download
 
@@ -22,7 +22,7 @@ has not been through Apple's notary service, so macOS will refuse to open it on 
 (Control-click) the package and choose **Open**, or install it from the Terminal:
 
 ```bash
-sudo installer -pkg ~/Downloads/LockdownBuilder-1.2-unsigned.pkg -target /
+sudo installer -pkg ~/Downloads/LockdownBuilder-1.3-unsigned.pkg -target /
 ```
 
 If you'd rather not run an un-notarised package, build from source (see [Build](#build)).
@@ -36,6 +36,15 @@ If you'd rather not run an un-notarised package, build from source (see [Build](
 | ![Home: start a rule from scratch, a folder, or a template](Screenshots/home.png) | ![The usb-block template page with its notes and the values it carries](Screenshots/template-usb-block.png) |
 | ![Dialog options: message with a {{companyName}} variable, buttons, and the More Information button](Screenshots/dialog-options.png) | ![The generated .mobileconfig, ready to export or publish to Jamf Pro](Screenshots/mobileconfig-preview.png) |
 | ![Settings: build the watcher installer and upload it to Jamf Pro](Screenshots/settings-watcher.png) | |
+
+## What's new in 1.3
+
+- **Message preset management.** *Settings → Dialog* lists the message presets: create one from scratch, duplicate a
+  built-in and change the copy, edit, or remove any of them, and **Restore Built-in Presets** brings the three
+  originals back. The editor's **Presets** menu lists them and adds **Save Message as Preset…**.
+- **`{{appName}}` in presets** becomes the rule's process name (or “This app” for a notify-only rule) when the preset
+  is applied. Watcher variables such as `{{companyName}}` stay in the message. Rules, plists and the watcher are
+  unchanged.
 
 ## What's new in 1.2
 
@@ -52,7 +61,9 @@ If you'd rather not run an un-notarised package, build from source (see [Build](
 - The JSON schema requires only `DialogMessage`; the app and the watcher enforce "KillProcess or Predicate".
 - First release with an installer package (see [Download](#download)).
 
-Earlier releases: [1.1](https://github.com/mrheathjones/LockdownBuilder/releases/tag/v1.1) (redesigned interface,
+Earlier releases: [1.2](https://github.com/mrheathjones/LockdownBuilder/releases/tag/v1.2) (notify-only rules, message
+variables, More Information button, first installer package),
+[1.1](https://github.com/mrheathjones/LockdownBuilder/releases/tag/v1.1) (redesigned interface,
 dialog designer, Publish to Jamf Pro, bundled watcher installer),
 [1.0](https://github.com/mrheathjones/LockdownBuilder/releases/tag/v1.0) (first release).
 
@@ -68,7 +79,7 @@ dialog designer, Publish to Jamf Pro, bundled watcher installer),
      fires, **Use** it.
    - *Watch & Kill* to watch an extension and kill its host.
    - *Notify Only* to show the dialog on a log line and quit nothing (no KillProcess; needs watcher 1.9 or later).
-4. **Dialog**: enter a title and message (pick a preset, or **Draft…** with Apple Intelligence), style the text with the
+4. **Dialog**: enter a title and message (pick a preset from the **Presets** menu, or **Draft…** with Apple Intelligence), style the text with the
    toolbar, insert variables such as `{{companyName}}` from the `{}` menu, add a **More Information** button that opens
    a local file or a web page, and set the window's size, position and alignment. The preview follows every edit; **Simulate Dialog**
    opens the real swiftDialog window with the watcher's flags.
@@ -168,6 +179,12 @@ keeps the token and a renamed company needs no rule changes: `{{companyName}}` (
 with), `{{ruleName}}`, `{{killProcess}}` (empty for a notify-only rule). Unknown `{{…}}` tokens are left as typed (the
 editor warns), and swiftDialog's own `{computername}`-style variables pass through. The built-in templates and the
 message presets use `{{companyName}}`.
+
+**Message presets.** The editor's **Presets** menu inserts a starting message; **Save Message as Preset…** turns the
+current message into one. Manage them in *Settings → Dialog*: create a preset from scratch, duplicate a built-in and
+change the copy, edit, or remove any of them (**Restore Built-in Presets** brings the three originals back). In a
+preset, `{{appName}}` becomes the rule's process name (or “This app” for a notify-only rule) when the preset is
+applied; watcher variables such as `{{companyName}}` stay in the message.
 
 A rule needs `KillProcess`, `Predicate` or both. The JSON schema only requires `DialogMessage` (it does not express
 "one of the two"); the app and the watcher enforce the rest.

@@ -74,20 +74,119 @@ struct DialogMarkdownTests {
 }
 
 struct DialogPresetTests {
-    @Test(arguments: DialogPreset.allCases)
-    func presetsProduceValidTitledMessages(preset: DialogPreset) {
+    @Test(arguments: DialogPreset.builtIn)
+    func builtInPresetsProduceValidTitledMessages(preset: DialogPreset) {
         let message = preset.message(appName: "Freeform")
         var rule = TestSupport.validRule(); rule.dialogMessage = message
         #expect(rule.validate().isEmpty)
         #expect(DialogMarkdown.parse(message).title != nil)
+        #expect(!message.contains(DialogPreset.appNameToken))
         // The company name is a variable, filled in by the watcher.
         #expect(message.contains("{{companyName}}"))
         var acme = RuleSettings(); acme.orgNameFriendly = "Acme"
         #expect(MessageVariables.expand(message, rule: rule, settings: acme).contains("Acme"))
+        #expect(preset.issues(among: DialogPreset.builtIn).isEmpty)
     }
 
     @Test func emptyAppNameFallsBack() {
         #expect(DialogPreset.appBlocked.message(appName: " ").hasPrefix("# This app Blocked"))
+    }
+
+    @Test func applyingReplacesEveryAppNameAndKeepsWatcherVariables() {
+        let preset = DialogPreset(name: "x", message: "# {{appName}}\n\n{{appName}} by {{companyName}} ({{killProcess}})")
+        #expect(preset.message(appName: " Freeform ") == "# Freeform\n\nFreeform by {{companyName}} ({{killProcess}})")
+        // A preset without the placeholder is inserted as it is.
+        #expect(DialogPreset.policyNotice.message(appName: "Freeform") == DialogPreset.policyNotice.message)
+    }
+
+    @Test func builtInsHaveFixedDistinctIDs() {
+        #expect(Set(DialogPreset.builtIn.map(\.id)).count == DialogPreset.builtIn.count)
+        #expect(DialogPreset.appBlocked.id == UUID(uuidString: "5D1F0C3A-7B2E-4E8A-9C44-1A6B3F9D2E01"))
+        #expect(DialogPreset.builtIn.map(\.name) == ["App blocked", "Feature blocked", "Policy notice"])
+    }
+
+    @Test func duplicateGetsItsOwnIdentityAndAnUnusedName() {
+        let copy = DialogPreset.appBlocked.duplicate(among: DialogPreset.builtIn)
+        #expect(copy.id != DialogPreset.appBlocked.id)
+        #expect(copy.name == "App blocked copy")
+        #expect(copy.message == DialogPreset.appBlocked.message)
+        let second = DialogPreset.appBlocked.duplicate(among: DialogPreset.builtIn + [copy])
+        #expect(second.name == "App blocked copy 2")
+        #expect(second.id != copy.id)
+    }
+
+    @Test func uniqueNamesIgnoreCaseAndOuterSpaces() {
+        #expect(DialogPreset.uniqueName(" app BLOCKED ", among: DialogPreset.builtIn) == "app BLOCKED 2")
+        #expect(DialogPreset.uniqueName("Fresh", among: DialogPreset.builtIn) == "Fresh")
+        let taken = DialogPreset.builtIn + [DialogPreset(name: "Fresh", message: "a"), DialogPreset(name: "Fresh 2", message: "b")]
+        #expect(DialogPreset.uniqueName("Fresh", among: taken) == "Fresh 3")
+    }
+
+    @Test func issuesFlagMissingNameMissingMessageAndNameClashes() {
+        #expect(DialogPreset(name: " ", message: " \n").issues(among: DialogPreset.builtIn).count == 2)
+        #expect(DialogPreset(name: "app blocked", message: "Hi").issues(among: DialogPreset.builtIn)
+                == ["Another preset is already called “app blocked”."])
+        // A preset being edited doesn't clash with its own stored copy.
+        var edited = DialogPreset.appBlocked; edited.message = "Changed"
+        #expect(edited.issues(among: DialogPreset.builtIn).isEmpty)
+        #expect(DialogPreset(name: "Fresh", message: "# Hi").issues(among: DialogPreset.builtIn).isEmpty)
+    }
+
+    @Test func generalizingTurnsTheProcessNameIntoThePlaceholder() {
+        let preset = DialogPreset.generalizing("# Freeform Blocked\n\nFreeform is off, says {{companyName}}.", appName: "Freeform", name: "Mine")
+        #expect(preset.name == "Mine")
+        #expect(preset.message == "# {{appName}} Blocked\n\n{{appName}} is off, says {{companyName}}.")
+        #expect(preset.message(appName: "Freeform") == "# Freeform Blocked\n\nFreeform is off, says {{companyName}}.")
+        // A notify-only rule has no process: the message is kept as typed.
+        #expect(DialogPreset.generalizing("# Hi", appName: "", name: "n").message == "# Hi")
+    }
+
+    @Test func summaryLineIsTheTitleOrTheFirstLineOfText() {
+        #expect(DialogPreset.appBlocked.summaryLine == "{{appName}} Blocked")
+        #expect(DialogPreset(name: "n", message: "\n\nFirst line\nSecond").summaryLine == "First line")
+        #expect(DialogPreset(name: "n", message: "").summaryLine == "")
+    }
+}
+
+struct DialogPresetSettingsTests {
+    @Test func settingsStartWithTheBuiltInsAndRoundTripCustomPresets() throws {
+        var settings = RuleSettings()
+        #expect(settings.dialogPresets == DialogPreset.builtIn)
+        settings.dialogPresets.append(DialogPreset(name: "Mine", message: "# Hi {{appName}}"))
+        let decoded = try JSONDecoder().decode(RuleSettings.self, from: JSONEncoder().encode(settings))
+        #expect(decoded == settings)
+    }
+
+    @Test func settingsSavedBeforePresetsExistedGetTheBuiltIns() throws {
+        let decoded = try JSONDecoder().decode(RuleSettings.self, from: Data(#"{"orgPlistDomain":"com.acme"}"#.utf8))
+        #expect(decoded.dialogPresets == DialogPreset.builtIn)
+        #expect(decoded.orgPlistDomain == "com.acme")
+    }
+
+    @Test func restoreAddsBackOnlyTheRemovedBuiltIns() {
+        var settings = RuleSettings()
+        settings.dialogPresets[0].message = "Edited"
+        settings.dialogPresets.removeAll { $0.id == DialogPreset.policyNotice.id }
+        settings.dialogPresets.append(DialogPreset(name: "Mine", message: "# Hi"))
+        #expect(settings.missingBuiltInPresets == [DialogPreset.policyNotice])
+        settings.restoreBuiltInPresets()
+        #expect(settings.dialogPresets.map(\.name) == ["App blocked", "Feature blocked", "Mine", "Policy notice"])
+        #expect(settings.dialogPresets[0].message == "Edited")
+        #expect(settings.missingBuiltInPresets.isEmpty)
+        settings.restoreBuiltInPresets()
+        #expect(settings.dialogPresets.count == 4)
+    }
+
+    @Test func savePresetReplacesByIDOrAppends() {
+        var settings = RuleSettings()
+        var edited = DialogPreset.featureBlocked; edited.name = "Feature off"
+        settings.savePreset(edited)
+        #expect(settings.dialogPresets.count == 3)
+        #expect(settings.dialogPresets[1] == edited)
+        let fresh = DialogPreset(name: "Fresh", message: "# Hi")
+        settings.savePreset(fresh)
+        #expect(settings.dialogPresets.last == fresh)
+        #expect(settings.dialogPresets.count == 4)
     }
 }
 
