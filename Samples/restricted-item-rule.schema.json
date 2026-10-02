@@ -1,0 +1,62 @@
+{
+  "$schema" : "http://json-schema.org/draft-04/schema#",
+  "additionalProperties" : false,
+  "description" : "A Restricted Item Watcher rule. One preference domain per rule; the domain is com.company.restrict.<rule-name> with a lowercase kebab-case rule name.",
+  "properties" : {
+    "ButtonAction" : {
+      "description" : "Opened when the primary button is pressed: an absolute path or a scheme://… URL. file:// is refused.",
+      "pattern" : "^(/|(?![Ff][Ii][Ll][Ee]:)[A-Za-z][A-Za-z0-9+.-]*://[^\\s]).*$",
+      "title" : "Primary button action",
+      "type" : "string"
+    },
+    "ButtonText" : {
+      "default" : "OK",
+      "minLength" : 1,
+      "title" : "Primary button label",
+      "type" : "string"
+    },
+    "CooldownSeconds" : {
+      "default" : 5,
+      "description" : "Dialog rate limit only; the kill happens every time.",
+      "minimum" : 0,
+      "title" : "Dialog cooldown (seconds)",
+      "type" : "integer"
+    },
+    "DialogMessage" : {
+      "description" : "swiftDialog Markdown. Start with “# Title” for a large bold title. Real newlines and blank lines make paragraphs.",
+      "minLength" : 1,
+      "title" : "Dialog message",
+      "type" : "string"
+    },
+    "DismissButtonText" : {
+      "description" : "Adds a secondary button that only closes the dialog.",
+      "minLength" : 1,
+      "title" : "Dismiss button label",
+      "type" : "string"
+    },
+    "KillProcess" : {
+      "description" : "Exact process name (pgrep -x / pkill -x). Full names match and may contain spaces, e.g. System Settings.",
+      "minLength" : 1,
+      "title" : "Process to kill",
+      "type" : "string"
+    },
+    "Predicate" : {
+      "description" : "Present: event-driven rule. Absent: presence rule, polled every 0.5 s.",
+      "minLength" : 1,
+      "title" : "Unified-log predicate",
+      "type" : "string"
+    },
+    "WatchProcess" : {
+      "description" : "Presence rules only: poll this process but still kill KillProcess. Invalid together with Predicate.",
+      "minLength" : 1,
+      "title" : "Process to watch",
+      "type" : "string"
+    }
+  },
+  "required" : [
+    "KillProcess",
+    "DialogMessage"
+  ],
+  "title" : "com.company.restrict.<rule-name>",
+  "type" : "object"
+}

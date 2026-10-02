@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>ButtonAction</key>
+	<string>/Applications/Self Service.app</string>
+	<key>ButtonText</key>
+	<string>Self Service</string>
+	<key>DialogMessage</key>
+	<string># App Store Blocked
+
+Software for this Mac is provided through Self Service by Company Name.
+
+Open Self Service to find the app you need.</string>
+	<key>DismissButtonText</key>
+	<string>Done</string>
+	<key>KillProcess</key>
+	<string>App Store</string>
+</dict>
+</plist>

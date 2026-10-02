@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>DialogMessage</key>
+	<string># FaceTime Blocked
+
+FaceTime isn't available on this Mac.
+
+This is a policy of Company Name. If you believe you need access, please contact the Service Desk.</string>
+	<key>KillProcess</key>
+	<string>FaceTime</string>
+</dict>
+</plist>
