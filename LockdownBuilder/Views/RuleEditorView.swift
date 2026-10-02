@@ -4,6 +4,7 @@ struct RuleEditorView: View {
     let store: ProjectStore
     @Binding var draft: RuleDraft
     @AppStorage("showPreview") private var showPreview = true
+    @State private var isShowingDiff = false
 
     var body: some View {
         HStack(spacing: 0) {
@@ -18,6 +19,10 @@ struct RuleEditorView: View {
         .navigationTitle(draft.rule.name.isEmpty ? "New Rule" : draft.rule.name)
         .toolbar {
             ToolbarItemGroup {
+                Button("Test", systemImage: "play.circle") { store.isShowingTestHarness = true }
+                    .help("Dry-run, simulate the dialog, or live-test the kill (⌘T)")
+                Button("Compare", systemImage: "arrow.left.arrow.right") { isShowingDiff = true }
+                    .help("Compare with the last exported plist")
                 Button("Save", systemImage: "square.and.arrow.down") { store.save() }
                     .help("Save all rules to the project folder (⌘S)")
                 Menu("Export", systemImage: "square.and.arrow.up") {
@@ -31,8 +36,15 @@ struct RuleEditorView: View {
                 }
                 .help("Export (⌘E exports this plist)")
                 Button("Preview", systemImage: "sidebar.trailing") { showPreview.toggle() }
-                    .help(showPreview ? "Hide the file preview" : "Show the file preview")
+                    .help(showPreview ? "Hide the preview" : "Show the preview")
             }
+        }
+        .sheet(isPresented: Binding(get: { store.isShowingTestHarness }, set: { store.isShowingTestHarness = $0 })) {
+            TestHarnessView(rule: draft.rule, settings: store.settings)
+        }
+        .sheet(isPresented: $isShowingDiff) {
+            DiffView(ruleName: draft.rule.name, old: store.lastExportedPlist(for: draft),
+                     new: RuleExport.plist(for: draft.rule))
         }
     }
 }
@@ -42,6 +54,7 @@ struct RuleEditorView: View {
 private struct RuleForm: View {
     let store: ProjectStore
     @Binding var draft: RuleDraft
+    @State private var pendingPreset: DialogPreset?
 
     private var issues: [ValidationIssue] { store.issues(for: draft) }
 
@@ -114,7 +127,17 @@ private struct RuleForm: View {
 
             Section("Dialog") {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("DialogMessage")
+                    HStack {
+                        Text("DialogMessage")
+                        Spacer()
+                        Menu("Presets") {
+                            ForEach(DialogPreset.allCases) { preset in
+                                Button(preset.rawValue) { pendingPreset = preset }
+                            }
+                        }
+                        .fixedSize()
+                        .accessibilityLabel("Message presets")
+                    }
                     TextEditor(text: $draft.rule.dialogMessage)
                         .font(.body.monospaced())
                         .frame(minHeight: 140)
@@ -137,6 +160,19 @@ private struct RuleForm: View {
             }
         }
         .formStyle(.grouped)
+        .confirmationDialog(
+            "Replace the message with the “\(pendingPreset?.rawValue ?? "")” preset?",
+            isPresented: Binding(get: { pendingPreset != nil }, set: { if !$0 { pendingPreset = nil } })
+        ) {
+            Button("Replace Message") {
+                if let preset = pendingPreset {
+                    draft.rule.dialogMessage = preset.message(appName: draft.rule.killProcess, org: store.settings.orgNameFriendly)
+                }
+                pendingPreset = nil
+            }
+        } message: {
+            Text("The preset is a starting point; edit it freely afterwards.")
+        }
     }
 
     // MARK: Pieces
@@ -198,26 +234,52 @@ extension Binding where Value == String? {
 private struct PreviewPane: View {
     let store: ProjectStore
     let draft: RuleDraft
-    @State private var format: ExportFormat = .plist
+    enum Tab: String { case dialog, plist, mobileconfig }
+    @AppStorage("previewTab") private var tab: Tab = .dialog
 
     var body: some View {
-        let issues = store.issues(for: draft)
-        let blocking = issues.filter(\.isError)
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Picker("Format", selection: $format) {
-                    Text("Plist").tag(ExportFormat.plist)
-                    Text(".mobileconfig").tag(ExportFormat.mobileconfig)
+                Picker("Preview", selection: $tab) {
+                    Text("Dialog").tag(Tab.dialog)
+                    Text("Plist").tag(Tab.plist)
+                    Text(".mobileconfig").tag(Tab.mobileconfig)
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
-                .frame(maxWidth: 220)
+                .fixedSize()
                 Spacer()
-                Button("Copy", systemImage: "doc.on.doc") {
-                    FileDialogs.copyToClipboard(store.text(for: draft.rule, format: format))
+                if tab == .dialog {
+                    Button("Copy Command", systemImage: "terminal") {
+                        FileDialogs.copyToClipboard(DialogCommand.shellCommand(for: draft.rule, settings: store.settings))
+                    }
+                    .help("Copy the swiftDialog command the watcher would run")
+                } else {
+                    Button("Copy", systemImage: "doc.on.doc") {
+                        FileDialogs.copyToClipboard(store.text(for: draft.rule, format: format))
+                    }
+                    .help("Copy the XML to the clipboard")
                 }
-                .help("Copy the XML to the clipboard")
             }
+            switch tab {
+            case .dialog:
+                DialogPreviewView(rule: draft.rule, settings: store.settings)
+                Text("Approximate preview. Use Test (⌘T) → Simulate Dialog to see the real swiftDialog window.")
+                    .font(.caption).foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+            case .plist, .mobileconfig:
+                filePreview
+            }
+        }
+        .padding()
+    }
+
+    private var format: ExportFormat { tab == .mobileconfig ? .mobileconfig : .plist }
+
+    @ViewBuilder
+    private var filePreview: some View {
+        let blocking = store.issues(for: draft).filter(\.isError)
+        Group {
             Text(store.fileName(for: draft.rule, format: format))
                 .font(.caption.monospaced()).foregroundStyle(.secondary)
                 .textSelection(.enabled)
@@ -237,6 +299,5 @@ private struct PreviewPane: View {
             }
             .background(.background.secondary, in: RoundedRectangle(cornerRadius: 8))
         }
-        .padding()
     }
 }

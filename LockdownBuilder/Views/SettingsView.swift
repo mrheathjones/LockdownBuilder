@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct SettingsView: View {
     @Bindable var store: ProjectStore
@@ -25,6 +26,23 @@ struct SettingsView: View {
                 Text("Used in the wording of templates and in .mobileconfig profiles.")
                     .font(.caption).foregroundStyle(.secondary)
             }
+            Section("Dialog") {
+                LabeledContent("Banner image") {
+                    Text(store.settings.bannerImagePath.isEmpty ? "None (dialog title is ORG_NAME_FRIENDLY)" : store.settings.bannerImagePath)
+                        .foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                }
+                HStack {
+                    Button("Choose…") {
+                        if let url = FileDialogs.chooseFiles(types: [.image], message: "Choose the banner image the watcher uses.").first {
+                            store.settings.bannerImagePath = url.path
+                        }
+                    }
+                    Button("Clear") { store.settings.bannerImagePath = "" }
+                        .disabled(store.settings.bannerImagePath.isEmpty)
+                }
+                Text("Used by the dialog preview and Simulate Dialog. Match the watcher's banner (--bannerimage with --title none).")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             Section("Output folder") {
                 LabeledContent("Default folder") {
                     Text(store.settings.defaultOutputFolder.isEmpty ? "None" : store.settings.defaultOutputFolder)
@@ -42,6 +60,6 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 520, height: 540)
+        .frame(width: 520, height: 640)
     }
 }

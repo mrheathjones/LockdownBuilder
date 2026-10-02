@@ -4,9 +4,8 @@ A native macOS app for authoring, validating, testing and exporting rule files f
 (a Jamf-deployed LaunchDaemon that kills a process and shows a swiftDialog message). The output is a correct rule
 `.plist`, ready for Jamf *Application & Custom Settings → Upload*.
 
-> **Status: in progress.** Rule model, validation, writers, importer, templates and the editor UI (rule list, form,
-> live preview, settings, open/save/import/export) are done. Dialog designer, test harness, target picker and predicate
-> discovery are next.
+> **Status: in progress.** Rule model, validation, writers, importer, templates, the editor UI, dialog designer and the
+> local test harness are done. Target picker, predicate discovery and the optional Foundation Models features are next.
 > See [JOURNAL.md](JOURNAL.md) for decisions and progress.
 
 ## Rule format
@@ -55,6 +54,16 @@ TEST_RUNNER_UPDATE_SAMPLES=1 xcodebuild -project LockdownBuilder.xcodeproj -sche
 | ⇧⌘I | Import (and validate) plists |
 | ⌘S | Save all rules to the folder |
 | ⌘E / ⇧⌘E | Export the selected rule as .plist / .mobileconfig |
+| ⌘T | Test the selected rule (dry run, simulate dialog, live kill test) |
+
+## Testing a rule locally
+
+**Test (⌘T)** never changes anything unless you ask it to:
+
+- **Dry run** explains what the watcher will do and shows whether a matching process is running now (`pgrep -x`).
+- **Simulate dialog** launches `/usr/local/bin/dialog` with exactly the flags the watcher uses. Nothing is killed and
+  `ButtonAction` is reported, not opened.
+- **Live kill test** (optional, clearly labelled) runs `pkill -x` only after you type the process name exactly.
 
 ## Why it is not sandboxed
 

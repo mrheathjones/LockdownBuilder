@@ -22,6 +22,13 @@ struct LockdownBuilderApp: App {
                 Button("Save") { store.save() }
                     .keyboardShortcut("s")
             }
+            CommandMenu("Rule") {
+                Button("Test Rule…") {
+                    if case .rule = store.selection { store.isShowingTestHarness = true }
+                    else { store.message = "Select a rule to test." }
+                }
+                .keyboardShortcut("t")
+            }
             CommandMenu("Export") {
                 Button("Export Selected Plist…") { exportSelected(.plist) }
                     .keyboardShortcut("e")

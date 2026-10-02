@@ -10,6 +10,21 @@ struct RuleSettings: Equatable, Codable, Sendable {
     var orgNameFriendly = "Company Name"
     /// Where open/save/export panels start. Empty means "no preference".
     var defaultOutputFolder = ""
+    /// Banner image the watcher uses, for "Simulate dialog" and the dialog preview. Empty means no banner.
+    var bannerImagePath = ""
+
+    init() {}
+
+    /// Tolerates settings saved by older versions that lack newer keys.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let d = RuleSettings()
+        orgPlistDomain = try c.decodeIfPresent(String.self, forKey: .orgPlistDomain) ?? d.orgPlistDomain
+        preference = try c.decodeIfPresent(String.self, forKey: .preference) ?? d.preference
+        orgNameFriendly = try c.decodeIfPresent(String.self, forKey: .orgNameFriendly) ?? d.orgNameFriendly
+        defaultOutputFolder = try c.decodeIfPresent(String.self, forKey: .defaultOutputFolder) ?? d.defaultOutputFolder
+        bannerImagePath = try c.decodeIfPresent(String.self, forKey: .bannerImagePath) ?? d.bannerImagePath
+    }
 
     /// `<ORG_PLIST_DOMAIN>.<PREFERENCE>.<rule-name>`
     func ruleDomain(for ruleName: String) -> String {

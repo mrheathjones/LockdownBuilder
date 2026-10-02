@@ -43,6 +43,8 @@ final class ProjectStore {
     }
     /// Shown in an alert by the main window.
     var message: String?
+    /// Set by ⌘T; the rule editor presents the test harness for the selected rule.
+    var isShowingTestHarness = false
 
     /// What is on disk, per draft, for the unsaved-changes dot and for cleaning up renamed files.
     private var savedRules: [UUID: RuleModel] = [:]
@@ -50,9 +52,11 @@ final class ProjectStore {
 
     private static let settingsKey = "RuleSettings.v1"
     private let defaults: UserDefaults
+    let history: ExportHistory
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard, history: ExportHistory = .standard) {
         self.defaults = defaults
+        self.history = history
         if let data = defaults.data(forKey: Self.settingsKey),
            let stored = try? JSONDecoder().decode(RuleSettings.self, from: data) {
             settings = stored
@@ -259,7 +263,8 @@ final class ProjectStore {
         guard let url = FileDialogs.saveFile(
             suggestedName: fileName(for: draft.rule, format: format), type: format.contentType, startingAt: startingFolder)
         else { return }
-        write(text(for: draft.rule, format: format), to: url)
+        let text = text(for: draft.rule, format: format)
+        if write(text, to: url) { history.record(text, fileName: fileName(for: draft.rule, format: format)) }
     }
 
     func exportAll(format: ExportFormat) {
@@ -275,7 +280,9 @@ final class ProjectStore {
             .filter { FileManager.default.fileExists(atPath: folder.appendingPathComponent($0).path) }
         guard FileDialogs.confirmOverwrite(existing, in: folder) else { return }
         for draft in ok {
-            write(text(for: draft.rule, format: format), to: folder.appendingPathComponent(fileName(for: draft.rule, format: format)))
+            let name = fileName(for: draft.rule, format: format)
+            let text = text(for: draft.rule, format: format)
+            if write(text, to: folder.appendingPathComponent(name)) { history.record(text, fileName: name) }
         }
         message = "Exported \(ok.count) file\(ok.count == 1 ? "" : "s") to \(folder.lastPathComponent)."
             + (blocked.isEmpty ? "" : "\nSkipped rules with errors: \(blocked.joined(separator: ", "))")
@@ -288,8 +295,19 @@ final class ProjectStore {
         write(RuleExport.jsonSchema(settings: settings), to: url)
     }
 
-    private func write(_ text: String, to url: URL) {
-        do { try Data(text.utf8).write(to: url, options: .atomic) }
-        catch { message = "Couldn't write \(url.lastPathComponent): \(error.localizedDescription)" }
+    /// The plist text from the last time this rule was exported, if any.
+    func lastExportedPlist(for draft: RuleDraft) -> String? {
+        history.lastExport(fileName: fileName(for: draft.rule, format: .plist))
+    }
+
+    @discardableResult
+    private func write(_ text: String, to url: URL) -> Bool {
+        do {
+            try Data(text.utf8).write(to: url, options: .atomic)
+            return true
+        } catch {
+            message = "Couldn't write \(url.lastPathComponent): \(error.localizedDescription)"
+            return false
+        }
     }
 }
