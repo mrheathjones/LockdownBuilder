@@ -3,8 +3,11 @@ import Observation
 import UniformTypeIdentifiers
 
 enum SidebarItem: Hashable {
+    /// The start screen.
+    case home
     case rule(UUID)
     case template(String)
+    case settings
 }
 
 /// A rule being edited, plus UI-only state that isn't part of the rule file.
@@ -36,7 +39,7 @@ enum ExportFormat {
 @Observable
 final class ProjectStore {
     var drafts: [RuleDraft] = []
-    var selection: SidebarItem?
+    var selection: SidebarItem? = .home
     private(set) var folderURL: URL?
     var settings: RuleSettings {
         didSet { persist() }
@@ -45,6 +48,8 @@ final class ProjectStore {
     var message: String?
     /// Set by ⌘T; the rule editor presents the test harness for the selected rule.
     var isShowingTestHarness = false
+    /// Set by the Export menu; the rule editor presents the Jamf publish sheet for the selected rule.
+    var isShowingJamfPublish = false
 
     /// What is on disk, per draft, for the unsaved-changes dot and for cleaning up renamed files.
     private var savedRules: [UUID: RuleModel] = [:]
@@ -128,7 +133,7 @@ final class ProjectStore {
 
     func delete(id: UUID) {
         drafts.removeAll { $0.id == id }
-        if selection == .rule(id) { selection = drafts.first.map { .rule($0.id) } }
+        if selection == .rule(id) { selection = drafts.first.map { .rule($0.id) } ?? .home }
         // The file on disk (if any) is left alone until the next save, which moves it to the Trash.
         pendingDeletions.append(contentsOf: savedFileNames[id].map { [$0] } ?? [])
         savedFileNames[id] = nil

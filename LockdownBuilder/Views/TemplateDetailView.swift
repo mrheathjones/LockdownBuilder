@@ -8,10 +8,11 @@ struct TemplateDetailView: View {
     var body: some View {
         let rule = template.rule(settings: store.settings)
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                HStack {
-                    VStack(alignment: .leading) {
-                        Text(template.id).font(.title2.bold())
+            VStack(alignment: .leading, spacing: 24) {
+                HStack(spacing: 14) {
+                    IconTile(symbol: template.symbol, tint: template.tint.color, size: 56)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(template.id).font(.system(size: 22, weight: .semibold))
                         Text(template.summary).foregroundStyle(.secondary)
                     }
                     Spacer()
@@ -20,21 +21,62 @@ struct TemplateDetailView: View {
                     }
                     .buttonStyle(.borderedProminent)
                 }
-                GroupBox("Why this works / caveats") {
-                    Text(template.notes)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(4)
+
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Image(systemName: "info.circle").foregroundStyle(.secondary)
+                    Text(template.notes).fixedSize(horizontal: false, vertical: true)
                 }
-                GroupBox("Generated plist") {
-                    Text(RuleExport.plist(for: rule))
-                        .font(.system(.callout, design: .monospaced))
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(4)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .card()
+
+                VStack(spacing: 0) {
+                    row("Process to quit", key: "KillProcess") { Text(rule.killProcess) }
+                    if let watch = rule.watchProcess {
+                        Divider()
+                        row("Process to watch", key: "WatchProcess") { Text(watch) }
+                    }
+                    Divider()
+                    row("When to act", key: rule.predicate == nil ? nil : "Predicate") {
+                        if let predicate = rule.predicate {
+                            Text(predicate).font(.system(size: 12, design: .monospaced))
+                        } else {
+                            Text("Presence (polled every 0.5 s)")
+                        }
+                    }
+                    Divider()
+                    row("Message", key: "DialogMessage") { Text(rule.dialogMessage) }
+                    if rule.buttonText != nil || rule.dismissButtonText != nil {
+                        Divider()
+                        row("Buttons", key: "ButtonText") {
+                            Text([rule.buttonText ?? "OK", rule.dismissButtonText].compactMap(\.self).joined(separator: "  ·  "))
+                        }
+                    }
+                    if let action = rule.buttonAction {
+                        Divider()
+                        row("Main button opens", key: "ButtonAction") { Text(action) }
+                    }
                 }
+                .card()
             }
-            .padding()
+            .frame(maxWidth: 720, alignment: .leading)
+            .padding(40)
+            .frame(maxWidth: .infinity)
         }
         .navigationTitle("Template: \(template.id)")
+    }
+
+    private func row(_ title: String, key: String?, @ViewBuilder value: () -> some View) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            FieldLabel(title: title, key: key)
+                .frame(width: 170, alignment: .leading)
+            value()
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
     }
 }

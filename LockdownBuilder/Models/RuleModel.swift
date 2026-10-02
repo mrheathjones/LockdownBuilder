@@ -16,6 +16,24 @@ struct RuleModel: Equatable, Hashable, Sendable {
     var buttonText: String?
     var buttonAction: String?
     var dismissButtonText: String?
+    /// Dialog window options. Absent means the watcher's default: swiftDialog's own size, centred,
+    /// on top, moveable, no blur.
+    var dialogWidth: Int?
+    var dialogHeight: Int?
+    var dialogPosition: DialogPosition?
+    var dialogOnTop: Bool?
+    var dialogMoveable: Bool?
+    var dialogBlurScreen: Bool?
+    /// Whether this rule's dialog shows the banner and icon set in Settings. Absent means shown.
+    var dialogShowBanner: Bool?
+    var dialogShowIcon: Bool?
+
+    /// swiftDialog's `--position` values.
+    enum DialogPosition: String, CaseIterable, Sendable {
+        case topLeft = "topleft", top, topRight = "topright"
+        case left, center, right
+        case bottomLeft = "bottomleft", bottom, bottomRight = "bottomright"
+    }
 
     init(
         name: String,
@@ -26,7 +44,15 @@ struct RuleModel: Equatable, Hashable, Sendable {
         cooldownSeconds: Int? = nil,
         buttonText: String? = nil,
         buttonAction: String? = nil,
-        dismissButtonText: String? = nil
+        dismissButtonText: String? = nil,
+        dialogWidth: Int? = nil,
+        dialogHeight: Int? = nil,
+        dialogPosition: DialogPosition? = nil,
+        dialogOnTop: Bool? = nil,
+        dialogMoveable: Bool? = nil,
+        dialogBlurScreen: Bool? = nil,
+        dialogShowBanner: Bool? = nil,
+        dialogShowIcon: Bool? = nil
     ) {
         self.name = name
         self.killProcess = killProcess
@@ -37,6 +63,14 @@ struct RuleModel: Equatable, Hashable, Sendable {
         self.buttonText = buttonText
         self.buttonAction = buttonAction
         self.dismissButtonText = dismissButtonText
+        self.dialogWidth = dialogWidth
+        self.dialogHeight = dialogHeight
+        self.dialogPosition = dialogPosition
+        self.dialogOnTop = dialogOnTop
+        self.dialogMoveable = dialogMoveable
+        self.dialogBlurScreen = dialogBlurScreen
+        self.dialogShowBanner = dialogShowBanner
+        self.dialogShowIcon = dialogShowIcon
     }
 
     enum Kind: Sendable {
@@ -64,6 +98,8 @@ struct RuleModel: Equatable, Hashable, Sendable {
     ]
 
     static let defaultCooldownSeconds = 5
+    /// Smallest dialog size that still fits the message and buttons.
+    static let minimumDialogSize = 200
 
     // MARK: Validation
 
@@ -140,6 +176,14 @@ struct RuleModel: Equatable, Hashable, Sendable {
             } else {
                 issues.append(contentsOf: Self.buttonActionIssues(buttonAction))
             }
+        }
+
+        // Dialog window
+        if let dialogWidth, dialogWidth < Self.minimumDialogSize {
+            add(.dialogWidth, .error, .dialogSizeTooSmall, "DialogWidth must be \(Self.minimumDialogSize) or more.")
+        }
+        if let dialogHeight, dialogHeight < Self.minimumDialogSize {
+            add(.dialogHeight, .error, .dialogSizeTooSmall, "DialogHeight must be \(Self.minimumDialogSize) or more.")
         }
 
         return issues

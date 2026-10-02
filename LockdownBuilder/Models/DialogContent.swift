@@ -4,19 +4,42 @@ import Foundation
 enum DialogCommand {
     static let dialogPath = "/usr/local/bin/dialog"
 
-    /// `--bannerimage <img> --title none --message … --button1text … [--button2text …] --ontop --moveable`;
-    /// without a banner, `--title "<org>"` instead of the banner flags.
+    /// `--bannerimage <img> --title none [--icon <img>] --message … --button1text … [--button2text …] --ontop --moveable`;
+    /// without a banner, `--title "<org>"` instead of the banner flags. `--icon` only when an icon is set.
+    /// The rule's window options add `--width`, `--height`, `--position`, `--blurscreen` and can drop
+    /// `--ontop` / `--moveable`; a rule without them gets exactly the flags above.
+    /// swiftDialog's own window size, used when a rule sets none.
+    static let defaultWidth = 820
+    static let defaultHeight = 380
+
+    /// The banner is shown when Settings has one and the rule hasn't turned it off.
+    static func showsBanner(_ rule: RuleModel, settings: RuleSettings) -> Bool {
+        !settings.bannerImagePath.isEmpty && (rule.dialogShowBanner ?? true)
+    }
+
     static func arguments(for rule: RuleModel, settings: RuleSettings) -> [String] {
         var args: [String] = []
-        if settings.bannerImagePath.isEmpty {
-            args += ["--title", settings.orgNameFriendly]
-        } else {
+        if showsBanner(rule, settings: settings) {
             args += ["--bannerimage", settings.bannerImagePath, "--title", "none"]
+            if let height = settings.bannerHeight { args += ["--bannerheight", String(height)] }
+        } else {
+            args += ["--title", settings.orgNameFriendly]
+        }
+        if rule.dialogShowIcon == false {
+            args += ["--icon", "none"]
+        } else {
+            if !settings.iconPath.isEmpty { args += ["--icon", settings.iconPath] }
+            if let size = settings.iconSize { args += ["--iconsize", String(size)] }
         }
         args += ["--message", rule.dialogMessage]
         args += ["--button1text", rule.buttonText ?? "OK"]
         if let dismiss = rule.dismissButtonText { args += ["--button2text", dismiss] }
-        args += ["--ontop", "--moveable"]
+        if let width = rule.dialogWidth { args += ["--width", String(width)] }
+        if let height = rule.dialogHeight { args += ["--height", String(height)] }
+        if let position = rule.dialogPosition { args += ["--position", position.rawValue] }
+        if rule.dialogOnTop ?? true { args.append("--ontop") }
+        if rule.dialogMoveable ?? true { args.append("--moveable") }
+        if rule.dialogBlurScreen ?? false { args.append("--blurscreen") }
         return args
     }
 
@@ -189,13 +212,25 @@ enum DialogLiveUpdate {
 
     static func needsRelaunch(from old: RuleModel, to new: RuleModel, oldSettings: RuleSettings, newSettings: RuleSettings) -> Bool {
         (old.dismissButtonText == nil) != (new.dismissButtonText == nil)
+            || windowOptions(old) != windowOptions(new)
             || oldSettings.bannerImagePath != newSettings.bannerImagePath
+            || oldSettings.iconPath != newSettings.iconPath
+            || oldSettings.bannerHeight != newSettings.bannerHeight
+            || oldSettings.iconSize != newSettings.iconSize
+    }
+
+    /// The launch-time window flags; swiftDialog can't change them on an open window.
+    private static func windowOptions(_ rule: RuleModel) -> [String] {
+        // Width and height are not here: the open window resizes through the command file.
+        [rule.dialogPosition?.rawValue, rule.dialogOnTop.map(String.init), rule.dialogMoveable.map(String.init),
+         rule.dialogBlurScreen.map(String.init), rule.dialogShowBanner.map(String.init), rule.dialogShowIcon.map(String.init)]
+            .map { $0 ?? "-" }
     }
 
     /// Command lines that bring a dialog showing `old` up to date with `new` (empty if nothing visible changed).
     static func commands(from old: RuleModel, to new: RuleModel, oldSettings: RuleSettings, newSettings: RuleSettings) -> [String] {
         var lines: [String] = []
-        if newSettings.bannerImagePath.isEmpty, oldSettings.orgNameFriendly != newSettings.orgNameFriendly {
+        if !DialogCommand.showsBanner(new, settings: newSettings), oldSettings.orgNameFriendly != newSettings.orgNameFriendly {
             lines.append("title: \(encode(newSettings.orgNameFriendly))")
         }
         if old.dialogMessage != new.dialogMessage {
@@ -206,6 +241,12 @@ enum DialogLiveUpdate {
         }
         if let text = new.dismissButtonText, text != old.dismissButtonText {
             lines.append("button2text: \(encode(text))")
+        }
+        if old.dialogWidth != new.dialogWidth {
+            lines.append("width: \(new.dialogWidth ?? DialogCommand.defaultWidth)")
+        }
+        if old.dialogHeight != new.dialogHeight {
+            lines.append("height: \(new.dialogHeight ?? DialogCommand.defaultHeight)")
         }
         return lines
     }

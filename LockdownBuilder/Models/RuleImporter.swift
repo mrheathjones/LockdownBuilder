@@ -15,6 +15,8 @@ enum RuleImporter {
     static let knownKeys: Set<String> = [
         "KillProcess", "DialogMessage", "Predicate", "WatchProcess",
         "CooldownSeconds", "ButtonText", "ButtonAction", "DismissButtonText",
+        "DialogWidth", "DialogHeight", "DialogPosition", "DialogOnTop", "DialogMoveable", "DialogBlurScreen",
+        "DialogShowBanner", "DialogShowIcon",
     ]
 
     static func importRule(data: Data, name: String) -> RuleImportResult {
@@ -37,15 +39,33 @@ enum RuleImporter {
             return nil
         }
 
-        var cooldown: Int?
-        if let raw = dict["CooldownSeconds"] {
+        func integer(_ key: String, field: RuleField) -> Int? {
+            guard let raw = dict[key] else { return nil }
             // NSNumber bridges booleans and reals too; only a true integer is acceptable.
             if let n = raw as? NSNumber, CFGetTypeID(n) != CFBooleanGetTypeID(),
                !CFNumberIsFloatType(n), let i = Int(exactly: n.int64Value) {
-                cooldown = i
-            } else {
-                issues.append(ValidationIssue(field: .cooldownSeconds, severity: .error, code: .wrongType,
-                                              message: "CooldownSeconds must be an integer."))
+                return i
+            }
+            issues.append(ValidationIssue(field: field, severity: .error, code: .wrongType,
+                                          message: "\(key) must be an integer."))
+            return nil
+        }
+
+        func bool(_ key: String, field: RuleField) -> Bool? {
+            guard let raw = dict[key] else { return nil }
+            if let n = raw as? NSNumber, CFGetTypeID(n) == CFBooleanGetTypeID() { return n.boolValue }
+            issues.append(ValidationIssue(field: field, severity: .error, code: .wrongType,
+                                          message: "\(key) must be true or false."))
+            return nil
+        }
+
+        var position: RuleModel.DialogPosition?
+        if let raw = string("DialogPosition", field: .dialogPosition) {
+            position = RuleModel.DialogPosition(rawValue: raw)
+            if position == nil {
+                issues.append(ValidationIssue(
+                    field: .dialogPosition, severity: .error, code: .dialogPositionUnknown,
+                    message: "DialogPosition “\(raw)” isn't one of \(RuleModel.DialogPosition.allCases.map(\.rawValue).joined(separator: ", "))."))
             }
         }
 
@@ -55,10 +75,18 @@ enum RuleImporter {
             dialogMessage: string("DialogMessage", field: .dialogMessage) ?? "",
             predicate: string("Predicate", field: .predicate),
             watchProcess: string("WatchProcess", field: .watchProcess),
-            cooldownSeconds: cooldown,
+            cooldownSeconds: integer("CooldownSeconds", field: .cooldownSeconds),
             buttonText: string("ButtonText", field: .buttonText),
             buttonAction: string("ButtonAction", field: .buttonAction),
-            dismissButtonText: string("DismissButtonText", field: .dismissButtonText)
+            dismissButtonText: string("DismissButtonText", field: .dismissButtonText),
+            dialogWidth: integer("DialogWidth", field: .dialogWidth),
+            dialogHeight: integer("DialogHeight", field: .dialogHeight),
+            dialogPosition: position,
+            dialogOnTop: bool("DialogOnTop", field: .dialogOnTop),
+            dialogMoveable: bool("DialogMoveable", field: .dialogMoveable),
+            dialogBlurScreen: bool("DialogBlurScreen", field: .dialogBlurScreen),
+            dialogShowBanner: bool("DialogShowBanner", field: .dialogShowBanner),
+            dialogShowIcon: bool("DialogShowIcon", field: .dialogShowIcon)
         )
 
         for key in dict.keys.sorted() where !knownKeys.contains(key) {

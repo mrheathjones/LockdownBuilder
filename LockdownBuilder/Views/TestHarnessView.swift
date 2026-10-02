@@ -10,54 +10,87 @@ struct TestHarnessView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Form {
-                dryRunSection
-                simulateSection
-                liveKillSection
+            HStack(spacing: 10) {
+                Image(systemName: "play.circle.fill").font(.system(size: 22)).foregroundStyle(.tint)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Test “\(model.rule.name)”").font(.system(size: 15, weight: .semibold))
+                    Text("Uses a snapshot of the rule. Edits made after opening aren't included.")
+                        .font(.system(size: 11)).foregroundStyle(.secondary)
+                }
+                Spacer()
             }
-            .formStyle(.grouped)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 14)
+            ScrollView {
+                VStack(spacing: 12) {
+                    dryRunSection
+                    simulateSection
+                    liveKillSection
+                }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 16)
+            }
             Divider()
             HStack {
-                Text("Testing a snapshot of “\(model.rule.name)”. Edits made after opening aren't included.")
-                    .font(.caption).foregroundStyle(.secondary)
                 Spacer()
                 Button("Done") { dismiss() }
                     .keyboardShortcut(.defaultAction)
             }
             .padding()
         }
-        .frame(width: 640, height: 560)
+        .frame(width: 640, height: 620)
         .task { await model.refreshMatches() }
         .onDisappear { model.stopDialog() }
     }
 
     // MARK: Sections
 
+    private func cardHeader(_ symbol: String, _ tint: Color, _ title: String, _ subtitle: String, badge: String, badgeTint: Color) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: symbol).foregroundStyle(tint).frame(width: 18)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title).font(.system(size: 13, weight: .semibold))
+                Text(subtitle).font(.system(size: 11)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer()
+            Badge(text: badge, tint: badgeTint)
+        }
+    }
+
     private var dryRunSection: some View {
-        Section {
+        VStack(alignment: .leading, spacing: 10) {
+            cardHeader("checklist", .green, "Dry run", "What the watcher would do. Nothing is quit or shown.",
+                       badge: "SAFE", badgeTint: .green)
             ForEach(Array(model.dryRunSteps.enumerated()), id: \.offset) { index, step in
-                HStack(alignment: .firstTextBaseline) {
-                    Text("\(index + 1).").monospacedDigit().foregroundStyle(.secondary)
-                    Text(step).textSelection(.enabled)
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text("\(index + 1)")
+                        .font(.system(size: 10, weight: .semibold)).monospacedDigit()
+                        .foregroundStyle(.secondary)
+                        .frame(width: 18, height: 18)
+                        .background(.quaternary, in: Circle())
+                    Text(step).font(.system(size: 12)).textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            HStack(alignment: .top) {
-                Text("Running now")
-                Spacer()
+            Divider()
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Image(systemName: "circle.fill").font(.system(size: 7))
+                    .foregroundStyle((model.killMatches?.isEmpty ?? true) ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.green))
+                Text("Running now:").foregroundStyle(.secondary)
                 matchSummary
-                    .multilineTextAlignment(.trailing)
-                    .fixedSize(horizontal: false, vertical: true)
+                Spacer()
                 Button("Refresh", systemImage: "arrow.clockwise") {
                     Task { await model.refreshMatches() }
                 }
                 .labelStyle(.iconOnly)
+                .buttonStyle(.borderless)
                 .help("Run pgrep -x again")
             }
-        } header: {
-            Text("Dry run")
-        } footer: {
-            Text("Describes what the watcher would do. Nothing is killed or shown.")
+            .font(.system(size: 11))
         }
+        .padding(14)
+        .card()
     }
 
     @ViewBuilder
@@ -65,13 +98,12 @@ struct TestHarnessView: View {
         if let error = model.matchError {
             Text(error).foregroundStyle(.red)
         } else if let kill = model.killMatches {
-            VStack(alignment: .trailing) {
+            VStack(alignment: .leading) {
                 Text(describe(kill, name: model.rule.killProcess))
                 if let watch = model.watchMatches, let name = model.rule.watchProcess {
                     Text(describe(watch, name: name))
                 }
             }
-            .font(.callout)
         } else {
             ProgressView().controlSize(.small)
         }
@@ -84,11 +116,21 @@ struct TestHarnessView: View {
     }
 
     private var simulateSection: some View {
-        Section {
-            Text(model.shellCommand)
-                .font(.caption.monospaced())
-                .textSelection(.enabled)
-                .lineLimit(8)
+        VStack(alignment: .leading, spacing: 10) {
+            cardHeader("macwindow", .accentColor, "Simulate dialog",
+                       model.dialogInstalled
+                           ? "Opens swiftDialog with the watcher's flags. ButtonAction is reported, not opened."
+                           : "swiftDialog isn't installed at \(DialogCommand.dialogPath).",
+                       badge: "SAFE", badgeTint: .green)
+            ScrollView {
+                Text(model.shellCommand)
+                    .font(.system(size: 11, design: .monospaced))
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(8)
+            }
+            .frame(maxHeight: 96)
+            .background(Color.black.opacity(0.12), in: RoundedRectangle(cornerRadius: 7))
             HStack {
                 switch model.dialogState {
                 case .idle:
@@ -99,7 +141,7 @@ struct TestHarnessView: View {
                 case .finished(let text):
                     Label(text, systemImage: "checkmark.circle").foregroundStyle(.green)
                 case .failed(let text):
-                    Label(text, systemImage: "xmark.octagon").foregroundStyle(.red)
+                    Label(text, systemImage: "xmark.circle.fill").foregroundStyle(.red)
                 }
                 Spacer()
                 Button("Copy Command") { FileDialogs.copyToClipboard(model.shellCommand) }
@@ -107,41 +149,39 @@ struct TestHarnessView: View {
                     Button("Close Dialog") { model.stopDialog() }
                 } else {
                     Button("Simulate Dialog") { model.simulateDialog() }
+                        .buttonStyle(.borderedProminent)
                         .disabled(!model.dialogInstalled)
                 }
             }
-        } header: {
-            Text("Simulate dialog")
-        } footer: {
-            Text(model.dialogInstalled
-                 ? "Launches swiftDialog with the same flags the watcher uses. Never kills anything, and ButtonAction is reported, not opened."
-                 : "swiftDialog isn't installed at \(DialogCommand.dialogPath).")
+            .font(.system(size: 11))
         }
+        .padding(14)
+        .card()
     }
 
     private var liveKillSection: some View {
-        Section {
+        VStack(alignment: .leading, spacing: 10) {
+            cardHeader("exclamationmark.triangle.fill", .orange, "Live kill test (optional)",
+                       "Runs pkill -x on this Mac right now. Unsaved work in that app is lost. No dialog is shown.",
+                       badge: "DESTRUCTIVE", badgeTint: .orange)
             if let reason = model.killBlockedReason {
-                Label(reason, systemImage: "xmark.octagon.fill").foregroundStyle(.red)
+                Label(reason, systemImage: "xmark.circle.fill").foregroundStyle(.red)
             } else {
-                TextField("Type “\(model.rule.killProcess)” to confirm", text: $model.confirmation)
-                    .accessibilityLabel("Process name confirmation")
                 HStack {
-                    if let result = model.killResult {
-                        Text(result).font(.callout)
-                    }
-                    Spacer()
-                    Button("Kill “\(model.rule.killProcess)” Now", role: .destructive) {
+                    TextField("Type “\(model.rule.killProcess)” to confirm", text: $model.confirmation)
+                        .textFieldStyle(.roundedBorder)
+                        .accessibilityLabel("Process name confirmation")
+                    Button("Quit Now", role: .destructive) {
                         Task { await model.liveKill() }
                     }
                     .disabled(!model.canLiveKill)
                 }
+                if let result = model.killResult {
+                    Text(result).font(.system(size: 11)).foregroundStyle(.secondary)
+                }
             }
-        } header: {
-            Label("Live kill test (optional)", systemImage: "exclamationmark.triangle.fill")
-                .foregroundStyle(.orange)
-        } footer: {
-            Text("Runs pkill -x on this Mac right now. Unsaved work in that app is lost. No dialog is shown.")
         }
+        .padding(14)
+        .card(border: .red.opacity(0.3), fill: .red.opacity(0.06))
     }
 }

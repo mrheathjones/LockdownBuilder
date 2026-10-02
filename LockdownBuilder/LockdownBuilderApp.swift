@@ -35,6 +35,11 @@ struct LockdownBuilderApp: App {
                     .keyboardShortcut("e")
                 Button("Export Selected .mobileconfig…") { exportSelected(.mobileconfig) }
                     .keyboardShortcut("e", modifiers: [.command, .shift])
+                Button("Publish Selected to Jamf Pro…") {
+                    if case .rule = store.selection { store.isShowingJamfPublish = true }
+                    else { store.message = "Select a rule to publish." }
+                }
+                .keyboardShortcut("p", modifiers: [.command, .shift])
                 Divider()
                 Button("Export All Plists…") { store.exportAll(format: .plist) }
                 Button("Export All .mobileconfig…") { store.exportAll(format: .mobileconfig) }

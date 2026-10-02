@@ -6,12 +6,20 @@ struct BuiltInTemplate: Identifiable, Sendable {
     let summary: String
     /// "Why this works / caveats" shown next to the template.
     let notes: String
+    /// SF Symbol and tint for the template's icon tile.
+    let symbol: String
+    let tint: Tint
     private let make: @Sendable (RuleSettings) -> RuleModel
 
-    init(id: String, summary: String, notes: String, make: @escaping @Sendable (RuleSettings) -> RuleModel) {
+    enum Tint: Sendable { case blue, indigo, orange, green, gray }
+
+    init(id: String, summary: String, notes: String, symbol: String, tint: Tint,
+         make: @escaping @Sendable (RuleSettings) -> RuleModel) {
         self.id = id
         self.summary = summary
         self.notes = notes
+        self.symbol = symbol
+        self.tint = tint
         self.make = make
     }
 
@@ -33,7 +41,8 @@ enum BuiltInTemplates {
         notes: """
         Kills System Settings (the host) when the sign-in email field gains focus. The predicate fires once, \
         about 35 ms after the click into that field, so an accidental click elsewhere in the pane is not penalised.
-        """
+        """,
+        symbol: "person.crop.circle.fill", tint: .blue
     ) { s in
         RuleModel(
             name: "apple-account",
@@ -51,7 +60,8 @@ enum BuiltInTemplates {
         Fires when System Settings loads InternetAccountsSettingsExtension; click-to-kill measured at about 0.25 s. \
         Kill the host (System Settings), not the extension: killing only the extension makes Settings show \
         “Extension process exited”. The extension exits with the host and a relaunch re-arms the rule.
-        """
+        """,
+        symbol: "at", tint: .indigo
     ) { s in
         RuleModel(
             name: "internet-accounts",
@@ -65,7 +75,8 @@ enum BuiltInTemplates {
     static let freeform = BuiltInTemplate(
         id: "freeform",
         summary: "Blocks Freeform.",
-        notes: "Presence rule: polled every 0.5 s, so the app is closed almost immediately after launch."
+        notes: "Presence rule: polled every 0.5 s, so the app is closed almost immediately after launch.",
+        symbol: "scribble", tint: .orange
     ) { s in
         RuleModel(
             name: "freeform", killProcess: "Freeform",
@@ -75,7 +86,8 @@ enum BuiltInTemplates {
     static let facetime = BuiltInTemplate(
         id: "facetime",
         summary: "Blocks FaceTime.",
-        notes: "Presence rule: polled every 0.5 s."
+        notes: "Presence rule: polled every 0.5 s.",
+        symbol: "video.fill", tint: .green
     ) { s in
         RuleModel(
             name: "facetime", killProcess: "FaceTime",
@@ -85,7 +97,8 @@ enum BuiltInTemplates {
     static let phone = BuiltInTemplate(
         id: "phone",
         summary: "Blocks the Phone app.",
-        notes: "Presence rule: polled every 0.5 s."
+        notes: "Presence rule: polled every 0.5 s.",
+        symbol: "phone.fill", tint: .green
     ) { s in
         RuleModel(
             name: "phone", killProcess: "Phone",
@@ -98,7 +111,8 @@ enum BuiltInTemplates {
         notes: """
         Presence rule with a primary “Self Service” button that opens /Applications/Self Service.app \
         and a “Done” button that only closes the dialog.
-        """
+        """,
+        symbol: "bag.fill", tint: .blue
     ) { s in
         RuleModel(
             name: "app-store", killProcess: "App Store",
@@ -114,7 +128,8 @@ enum BuiltInTemplates {
         notes: """
         Presence rule on the process name “fm”. Caveat: a one-shot command can exit before the 0.5 s poll sees it. \
         If you can find a log line unique to the command, an event rule (with a Predicate) is more reliable.
-        """
+        """,
+        symbol: "terminal.fill", tint: .gray
     ) { s in
         RuleModel(
             name: "fm", killProcess: "fm",

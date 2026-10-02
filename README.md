@@ -22,7 +22,21 @@ A native macOS app for authoring, validating, testing and exporting rule files f
    real swiftDialog window and updates it as you type, like swiftDialog's builder.
 5. **⌘E** to export the plist (or `.mobileconfig`), then upload it in Jamf: *Application & Custom Settings → Upload*,
    preference domain = the file name without `.plist`. Optionally upload `restricted-item-rule.schema.json` as the
-   custom schema.
+   custom schema. Or skip the upload: **Export → Publish to Jamf Pro…** (⇧⌘P) sends the `.mobileconfig` straight to
+   your server (see below).
+
+## Publish to Jamf Pro (optional)
+
+In **Settings → Jamf Pro**, enter your server URL and an API client's ID and secret (Jamf Pro → Settings → API roles and
+clients), then **Test Connection**. The API role needs only *Create*, *Read* and *Update macOS Configuration Profiles*.
+
+- Auth is OAuth client credentials. The client secret is stored in your login keychain, never in preferences or files,
+  and every token is invalidated as soon as the request finishes.
+- **Publish** is two steps. *Check Jamf Pro* is read-only and tells you whether a profile with that name exists.
+  Only then does *Create Profile* or *Update Profile* send anything.
+- A new profile is created **with no scope**, so it installs nowhere until you scope it in Jamf Pro. An update replaces
+  the name and payload only; scope, category and site are left alone.
+- The profile name defaults to `Restrict - <rule-name>` and can be changed per rule; the choice is remembered.
 
 ## Apple Intelligence (optional)
 
@@ -50,6 +64,13 @@ One plist per rule, named `<ORG_PLIST_DOMAIN>.<PREFERENCE>.<rule-name>.plist` (e
 | `ButtonText` | string | no | Primary button label, default `OK` |
 | `ButtonAction` | string | no | Absolute path or `scheme://…` URL; `file://` and control characters refused |
 | `DismissButtonText` | string | no | Adds a secondary button that only closes the dialog |
+| `DialogWidth`, `DialogHeight` | integer | no | Dialog size in points (200 or more). Absent: swiftDialog's default |
+| `DialogPosition` | string | no | `topleft`, `top`, `topright`, `left`, `center`, `right`, `bottomleft`, `bottom`, `bottomright`. Absent: centred |
+| `DialogOnTop` | boolean | no | Keep the dialog above other windows. Absent: true |
+| `DialogMoveable` | boolean | no | Let the user move the dialog. Absent: true |
+| `DialogBlurScreen` | boolean | no | Blur the screen behind the dialog. Absent: false |
+| `DialogShowBanner` | boolean | no | Show the banner image. False: the dialog title is the organisation name. Absent: true |
+| `DialogShowIcon` | boolean | no | Show the icon. Absent: true |
 
 Rule names are lowercase kebab-case (`^[a-z0-9]+(-[a-z0-9]+)*$`); `watcher` is reserved. `KillProcess` may never be
 `launchd`, `kernel_task`, `loginwindow`, `WindowServer`, `bash`, `log`, `dialog` or `Restricted-Item-Watcher.sh`.
@@ -61,7 +82,8 @@ schema field. They double as golden files for the tests.
 
 Requirements: macOS 26+ on Apple Silicon, Xcode 26+ (developed with Xcode 27 on macOS 27). Apple Intelligence is
 optional. Pure `.xcodeproj`, no Swift packages,
-no third-party dependencies, no network access, no telemetry.
+no third-party dependencies, no telemetry. The only network access is to your own Jamf Pro server, and only when you
+test the connection or publish a profile.
 
 ```bash
 xcodebuild -project LockdownBuilder.xcodeproj -scheme LockdownBuilder build
@@ -103,8 +125,8 @@ TEST_RUNNER_UPDATE_SAMPLES=1 xcodebuild -project LockdownBuilder.xcodeproj -sche
 ## Why it is not sandboxed
 
 The app must run `/usr/bin/log`, `pgrep` and `plutil`, read `/Applications`, and launch `/usr/local/bin/dialog`, none of
-which the App Sandbox allows. It is built with the **hardened runtime** and is Developer ID signable. It makes no
-network connections.
+which the App Sandbox allows. It is built with the **hardened runtime** and is Developer ID signable. The only
+network connections it makes are to the Jamf Pro server you configure, when you test or publish.
 
 ## Signing and notarisation
 

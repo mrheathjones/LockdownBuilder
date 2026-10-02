@@ -12,6 +12,17 @@ struct RuleSettings: Equatable, Codable, Sendable {
     var defaultOutputFolder = ""
     /// Banner image the watcher uses, for "Simulate dialog" and the dialog preview. Empty means no banner.
     var bannerImagePath = ""
+    /// Icon the watcher's dialog shows (`--icon`). Empty means swiftDialog's default icon.
+    var iconPath = ""
+    /// Banner height and icon size in points (`--bannerheight`, `--iconsize`). Nil means swiftDialog's default.
+    var bannerHeight: Int?
+    var iconSize: Int?
+    /// Jamf Pro server, e.g. `https://company.jamfcloud.com`. The client secret lives in the Keychain, not here.
+    var jamfURL = ""
+    /// Jamf Pro API client ID (not a secret on its own).
+    var jamfClientID = ""
+    /// Configuration profile names chosen when publishing, by rule name, so a republish updates the same profile.
+    var profileNames: [String: String] = [:]
     /// Optional Apple Intelligence features (draft message, suggest predicate). Nothing depends on them.
     var aiEnabled = true
 
@@ -26,6 +37,12 @@ struct RuleSettings: Equatable, Codable, Sendable {
         orgNameFriendly = try c.decodeIfPresent(String.self, forKey: .orgNameFriendly) ?? d.orgNameFriendly
         defaultOutputFolder = try c.decodeIfPresent(String.self, forKey: .defaultOutputFolder) ?? d.defaultOutputFolder
         bannerImagePath = try c.decodeIfPresent(String.self, forKey: .bannerImagePath) ?? d.bannerImagePath
+        iconPath = try c.decodeIfPresent(String.self, forKey: .iconPath) ?? d.iconPath
+        bannerHeight = try c.decodeIfPresent(Int.self, forKey: .bannerHeight)
+        iconSize = try c.decodeIfPresent(Int.self, forKey: .iconSize)
+        jamfURL = try c.decodeIfPresent(String.self, forKey: .jamfURL) ?? d.jamfURL
+        jamfClientID = try c.decodeIfPresent(String.self, forKey: .jamfClientID) ?? d.jamfClientID
+        profileNames = try c.decodeIfPresent([String: String].self, forKey: .profileNames) ?? d.profileNames
         aiEnabled = try c.decodeIfPresent(Bool.self, forKey: .aiEnabled) ?? d.aiEnabled
     }
 
@@ -42,9 +59,15 @@ struct RuleSettings: Equatable, Codable, Sendable {
     /// The watcher LaunchDaemon label, shown for reference only.
     var watcherLabel: String { "\(orgPlistDomain).\(preference).watcher" }
 
-    /// Suggested Jamf configuration profile name: `Restrict - <rule-name>`.
-    func profileName(for ruleName: String) -> String {
+    /// Default Jamf configuration profile name: `Restrict - <rule-name>`.
+    func defaultProfileName(for ruleName: String) -> String {
         "\(preference.prefix(1).uppercased() + preference.dropFirst()) - \(ruleName)"
+    }
+
+    /// The configuration profile name for a rule: the one chosen when publishing, or the default.
+    func profileName(for ruleName: String) -> String {
+        if let custom = profileNames[ruleName]?.trimmingCharacters(in: .whitespaces), !custom.isEmpty { return custom }
+        return defaultProfileName(for: ruleName)
     }
 
     /// Recovers a rule name from a file name produced by `fileName(for:)`, or nil if it doesn't match.
@@ -66,7 +89,7 @@ struct RuleSettings: Equatable, Codable, Sendable {
             out.append("PREFERENCE must be lowercase letters, digits and hyphens (default: restrict).")
         }
         if orgNameFriendly.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            out.append("ORG_NAME_FRIENDLY must not be empty.")
+            out.append("Company name must not be empty.")
         }
         return out
     }

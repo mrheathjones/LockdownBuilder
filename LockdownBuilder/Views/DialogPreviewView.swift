@@ -1,100 +1,135 @@
 import AppKit
 import SwiftUI
 
-/// An approximation of how swiftDialog renders the watcher's dialog: banner (or org title), Markdown message,
-/// and one or two buttons. "Simulate dialog" in the test harness shows the real thing.
+/// An approximation of how swiftDialog renders the watcher's dialog: banner (or org title), icon, Markdown
+/// message and one or two buttons. It is laid out at the dialog's real point size and scaled to the space
+/// available, so the rule's width and height (and the banner and icon sizes) show in proportion.
+/// "Live Preview" and "Simulate dialog" show the real thing.
 struct DialogPreviewView: View {
     let rule: RuleModel
     let settings: RuleSettings
 
+    /// Stand-ins for swiftDialog's defaults when Settings leaves the size alone.
+    private static let defaultBannerHeight = 130
+    private static let defaultIconSize = 150
+
+    private var width: CGFloat { CGFloat(max(rule.dialogWidth ?? DialogCommand.defaultWidth, RuleModel.minimumDialogSize)) }
+    private var height: CGFloat { CGFloat(max(rule.dialogHeight ?? DialogCommand.defaultHeight, RuleModel.minimumDialogSize)) }
+
     var body: some View {
+        Color.clear
+            .aspectRatio(width / height, contentMode: .fit)
+            .overlay {
+                GeometryReader { geometry in
+                    dialog
+                        .frame(width: width, height: height)
+                        .scaleEffect(geometry.size.width / width, anchor: .topLeading)
+                }
+            }
+            .shadow(color: .black.opacity(0.3), radius: 14, y: 6)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Dialog preview, \(Int(width)) by \(Int(height)) points")
+    }
+
+    private var dialog: some View {
         let document = DialogMarkdown.parse(rule.dialogMessage)
-        VStack(spacing: 0) {
+        return VStack(spacing: 0) {
             header
-            ScrollView {
-                HStack(alignment: .top, spacing: 20) {
-                    // The watcher passes no --icon, so swiftDialog shows its default icon here.
-                    defaultIcon
-                    VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 28) {
+                if rule.dialogShowIcon ?? true { icon }
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 14) {
                         if let title = document.title {
-                            Text(title).font(.title.bold())
+                            Text(title).font(.system(size: 30, weight: .bold))
                             Divider()
                         }
                         ForEach(Array(document.blocks.enumerated()), id: \.offset) { _, block in
                             blockView(block)
                         }
                     }
+                    .font(.system(size: 20))
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .padding(20)
+                .scrollIndicators(.never)
             }
-            HStack(spacing: 8) {
+            .padding(.horizontal, 28)
+            .padding(.top, 24)
+            .frame(maxHeight: .infinity, alignment: .top)
+            HStack(spacing: 12) {
                 Spacer()
                 if let dismiss = rule.dismissButtonText {
                     fakeButton(dismiss, prominent: false)
                 }
                 fakeButton(rule.buttonText ?? "OK", prominent: true)
             }
-            .padding(16)
+            .padding(20)
         }
-        .frame(minHeight: 340)
-        .background(.background, in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(.quaternary))
-        .shadow(color: .black.opacity(0.15), radius: 10, y: 4)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Dialog preview")
+        .background(.background)
+        .clipShape(RoundedRectangle(cornerRadius: 22))
+        .overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(.quaternary, lineWidth: 1))
     }
 
     @ViewBuilder
     private var header: some View {
-        if settings.bannerImagePath.isEmpty {
+        let bannerHeight = CGFloat(settings.bannerHeight ?? Self.defaultBannerHeight)
+        if !DialogCommand.showsBanner(rule, settings: settings) {
             // Without a banner the watcher passes --title "<org>".
             Text(settings.orgNameFriendly)
-                .font(.title2.bold())
+                .font(.system(size: 28, weight: .bold))
                 .frame(maxWidth: .infinity)
-                .padding(.top, 18)
-                .padding(.bottom, 4)
+                .padding(.top, 24)
         } else if let image = NSImage(contentsOfFile: settings.bannerImagePath) {
             Image(nsImage: image)
                 .resizable()
                 .aspectRatio(contentMode: .fill)
-                .frame(height: 110)
+                .frame(height: bannerHeight)
                 .frame(maxWidth: .infinity)
                 .clipped()
-                .clipShape(UnevenRoundedRectangle(topLeadingRadius: 12, topTrailingRadius: 12))
         } else {
             ZStack {
                 LinearGradient(colors: [.accentColor.opacity(0.7), .accentColor.opacity(0.35)],
                                startPoint: .leading, endPoint: .trailing)
-                Label("Banner image not found", systemImage: "photo")
+                Label("Banner image not found on this Mac", systemImage: "photo")
+                    .font(.system(size: 20))
                     .foregroundStyle(.white)
             }
-            .frame(height: 110)
-            .clipShape(UnevenRoundedRectangle(topLeadingRadius: 12, topTrailingRadius: 12))
+            .frame(height: bannerHeight)
         }
     }
 
-    private var defaultIcon: some View {
-        RoundedRectangle(cornerRadius: 14)
-            .fill(LinearGradient(colors: [.blue, .cyan.opacity(0.7)], startPoint: .top, endPoint: .bottom))
-            .frame(width: 64, height: 64)
-            .overlay {
-                Image(systemName: "message.fill")
-                    .font(.system(size: 30))
-                    .foregroundStyle(.white)
-            }
-            .accessibilityHidden(true)
+    /// The icon from Settings (`--icon`), or a stand-in for swiftDialog's default icon.
+    @ViewBuilder
+    private var icon: some View {
+        let size = CGFloat(settings.iconSize ?? Self.defaultIconSize)
+        if !settings.iconPath.isEmpty, let image = NSImage(contentsOfFile: settings.iconPath) {
+            Image(nsImage: image)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: size, height: size)
+                .accessibilityHidden(true)
+        } else {
+            RoundedRectangle(cornerRadius: size * 0.23)
+                .fill(LinearGradient(colors: [.blue, .cyan.opacity(0.7)], startPoint: .top, endPoint: .bottom))
+                .frame(width: size, height: size)
+                .overlay {
+                    Image(systemName: settings.iconPath.isEmpty ? "message.fill" : "photo")
+                        .font(.system(size: size * 0.46))
+                        .foregroundStyle(.white)
+                }
+                .help(settings.iconPath.isEmpty ? "swiftDialog's default icon" : "Icon not found at \(settings.iconPath)")
+                .accessibilityHidden(true)
+        }
     }
 
     @ViewBuilder
     private func blockView(_ block: DialogMarkdown.Block) -> some View {
         switch block {
         case .heading(let text):
-            Text(inline(text)).font(.title3.bold())
+            Text(inline(text)).font(.system(size: 24, weight: .bold))
         case .paragraph(let text):
             Text(inline(text))
         case .bullet(let text):
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text("•")
                 Text(inline(text))
             }
@@ -108,8 +143,9 @@ struct DialogPreviewView: View {
 
     private func fakeButton(_ title: String, prominent: Bool) -> some View {
         Text(title)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 5)
+            .font(.system(size: 18))
+            .padding(.horizontal, 26)
+            .padding(.vertical, 8)
             .foregroundStyle(prominent ? .white : .primary)
             .background(prominent ? AnyShapeStyle(.tint) : AnyShapeStyle(.quaternary), in: Capsule())
     }

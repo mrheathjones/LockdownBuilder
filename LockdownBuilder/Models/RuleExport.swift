@@ -18,6 +18,14 @@ enum RuleExport {
         if let v = rule.buttonText { d["ButtonText"] = .string(v) }
         if let v = rule.buttonAction { d["ButtonAction"] = .string(v) }
         if let v = rule.dismissButtonText { d["DismissButtonText"] = .string(v) }
+        if let v = rule.dialogWidth { d["DialogWidth"] = .integer(v) }
+        if let v = rule.dialogHeight { d["DialogHeight"] = .integer(v) }
+        if let v = rule.dialogPosition { d["DialogPosition"] = .string(v.rawValue) }
+        if let v = rule.dialogOnTop { d["DialogOnTop"] = .bool(v) }
+        if let v = rule.dialogMoveable { d["DialogMoveable"] = .bool(v) }
+        if let v = rule.dialogBlurScreen { d["DialogBlurScreen"] = .bool(v) }
+        if let v = rule.dialogShowBanner { d["DialogShowBanner"] = .bool(v) }
+        if let v = rule.dialogShowIcon { d["DialogShowIcon"] = .bool(v) }
         return d
     }
 
@@ -86,6 +94,52 @@ enum RuleExport {
                     "description": "Adds a secondary button that only closes the dialog.",
                     "type": "string",
                     "minLength": 1,
+                ] as [String: Any],
+                "DialogWidth": [
+                    "title": "Dialog width (points)",
+                    "description": "Absent: swiftDialog's default width.",
+                    "type": "integer",
+                    "minimum": RuleModel.minimumDialogSize,
+                ] as [String: Any],
+                "DialogHeight": [
+                    "title": "Dialog height (points)",
+                    "description": "Absent: swiftDialog's default height.",
+                    "type": "integer",
+                    "minimum": RuleModel.minimumDialogSize,
+                ] as [String: Any],
+                "DialogPosition": [
+                    "title": "Dialog position",
+                    "description": "Where the dialog appears on screen. Absent: centred.",
+                    "type": "string",
+                    "enum": RuleModel.DialogPosition.allCases.map(\.rawValue),
+                    "default": "center",
+                ] as [String: Any],
+                "DialogOnTop": [
+                    "title": "Keep the dialog on top",
+                    "description": "Keeps the dialog above other windows.",
+                    "type": "boolean",
+                    "default": true,
+                ] as [String: Any],
+                "DialogMoveable": [
+                    "title": "Let the user move the dialog",
+                    "type": "boolean",
+                    "default": true,
+                ] as [String: Any],
+                "DialogBlurScreen": [
+                    "title": "Blur the screen behind the dialog",
+                    "type": "boolean",
+                    "default": false,
+                ] as [String: Any],
+                "DialogShowBanner": [
+                    "title": "Show the banner image",
+                    "description": "False: no banner; the dialog title is the organisation name instead.",
+                    "type": "boolean",
+                    "default": true,
+                ] as [String: Any],
+                "DialogShowIcon": [
+                    "title": "Show the icon",
+                    "type": "boolean",
+                    "default": true,
                 ] as [String: Any],
             ] as [String: Any],
         ]
