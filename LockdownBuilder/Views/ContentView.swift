@@ -26,7 +26,7 @@ struct ContentView: View {
                 placeholder
             }
         }
-        .alert("Rule Builder", isPresented: Binding(get: { store.message != nil }, set: { if !$0 { store.message = nil } })) {
+        .alert("LockdownBuilder", isPresented: Binding(get: { store.message != nil }, set: { if !$0 { store.message = nil } })) {
             Button("OK") { store.message = nil }
         } message: {
             Text(store.message ?? "")
@@ -69,7 +69,7 @@ struct SidebarView: View {
                 }
             }
         }
-        .navigationTitle(store.folderURL?.lastPathComponent ?? "Rule Builder")
+        .navigationTitle(store.folderURL?.lastPathComponent ?? "LockdownBuilder")
         .toolbar {
             ToolbarItem {
                 Button("New Rule", systemImage: "plus") { store.newRule() }

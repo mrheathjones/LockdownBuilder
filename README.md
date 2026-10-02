@@ -1,4 +1,4 @@
-# Restricted Item Rule Builder
+# LockdownBuilder
 
 A native macOS app for authoring, validating, testing and exporting rule files for the **Restricted Item Watcher**
 (a Jamf-deployed LaunchDaemon that kills a process and shows a swiftDialog message). The output is a correct rule

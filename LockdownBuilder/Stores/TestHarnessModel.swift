@@ -66,7 +66,7 @@ final class TestHarnessModel {
                 let output = try await runner.run(DialogCommand.dialogPath, arguments)
                 guard !Task.isCancelled else { dialogState = .idle; return }
                 dialogState = .finished(output.wasTerminated
-                    ? "Dialog was closed from Rule Builder."
+                    ? "Dialog was closed from LockdownBuilder."
                     : DialogCommand.describeExit(output.status, rule: rule))
             } catch {
                 dialogState = .failed(error.localizedDescription)

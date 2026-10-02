@@ -89,7 +89,7 @@ struct DiscoveryView: View {
                     aiPanel
                 case .failed(let message):
                     Label(message, systemImage: "xmark.octagon.fill").foregroundStyle(.red)
-                    Text("log stream needs an administrator account. Run Rule Builder as an admin user, or capture on a test Mac.")
+                    Text("log stream needs an administrator account. Run LockdownBuilder as an admin user, or capture on a test Mac.")
                         .font(.caption).foregroundStyle(.secondary)
                     HStack { Spacer(); Button("Try Again") { model.startBaseline() } }
                 }
