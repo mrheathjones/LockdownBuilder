@@ -872,12 +872,13 @@ private struct MessageEditor<Accessory: View>: View {
                     }
                 }
             } label: {
+                // The label goes on the image: a Menu reports its label view's name, not its own.
                 Image(systemName: "curlybraces").frame(width: 24, height: 20).contentShape(Rectangle())
+                    .accessibilityLabel("Insert variable")
             }
             .menuIndicator(.hidden)
             .fixedSize()
             .help("Insert a variable the watcher fills in when the dialog is shown")
-            .accessibilityLabel("Insert variable")
             Spacer()
         }
         .buttonStyle(.borderless)

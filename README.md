@@ -9,17 +9,52 @@ quitting them, but tells the user why in a prompt you design: your wording, your
 can take them somewhere useful such as Self Service. It can also act on a single action inside an app (for example
 opening one System Settings pane) rather than only on the whole app.
 
-> **Status:** feature-complete per the original brief: rule editor, validation, exports, dialog designer, test harness,
-> target picker, predicate discovery and optional on-device Apple Intelligence help.
+> **Status:** version 1.2. Rule editor, validation, exports, dialog designer, test harness, target picker, predicate
+> discovery, Jamf Pro publishing, and optional on-device Apple Intelligence help.
+
+## Download
+
+Each [release](https://github.com/mrheathjones/LockdownBuilder/releases) has the source and, from 1.2, an installer
+package (`LockdownBuilder-<version>-unsigned.pkg`) that puts `LockdownBuilder.app` in `/Applications`.
+
+**The package is not notarised.** The app inside is signed with a Developer ID, but the `.pkg` itself is unsigned and
+has not been through Apple's notary service, so macOS will refuse to open it on a double-click. Either right-click
+(Control-click) the package and choose **Open**, or install it from the Terminal:
+
+```bash
+sudo installer -pkg ~/Downloads/LockdownBuilder-1.2-unsigned.pkg -target /
+```
+
+If you'd rather not run an un-notarised package, build from source (see [Build](#build)).
 
 ## Screenshots
 
-![The rule editor: three steps on the left, a live dialog preview on the right](Screenshots/rule-editor.png)
+![The rule editor: a notify-only rule with the Notify Only type selected and a live dialog preview on the right](Screenshots/rule-editor.png)
 
 | | |
 |---|---|
-| ![Home: start a rule from scratch, a folder, or a template](Screenshots/home.png) | ![Dialog options: buttons, window size, position and message alignment](Screenshots/dialog-options.png) |
-| ![The generated .mobileconfig, ready to export or publish to Jamf Pro](Screenshots/mobileconfig-preview.png) | ![Settings: build the watcher installer and upload it to Jamf Pro](Screenshots/settings-watcher.png) |
+| ![Home: start a rule from scratch, a folder, or a template](Screenshots/home.png) | ![The usb-block template page with its notes and the values it carries](Screenshots/template-usb-block.png) |
+| ![Dialog options: message with a {{companyName}} variable, buttons, and the More Information button](Screenshots/dialog-options.png) | ![The generated .mobileconfig, ready to export or publish to Jamf Pro](Screenshots/mobileconfig-preview.png) |
+| ![Settings: build the watcher installer and upload it to Jamf Pro](Screenshots/settings-watcher.png) | |
+
+## What's new in 1.2
+
+- **Notify Only rules.** A rule with a `Predicate` and no `KillProcess` shows the dialog when the log line appears and
+  quits nothing. Use it to explain something that is enforced elsewhere.
+- **usb-block template.** A notify-only rule that tells the user why an external drive did not mount under a DDM
+  Disk Management *Disallowed* policy. It enforces nothing; scope it only to the group with that policy.
+- **Message variables.** `{{companyName}}`, `{{ruleName}}` and `{{killProcess}}` in the title or message are filled
+  in by the watcher when the dialog is shown. The built-in templates and presets use `{{companyName}}`.
+- **More Information button.** `InfoButtonAction` adds a button at the bottom left that closes the dialog and opens a
+  local file, an app or a web page; `InfoButtonText` sets its label.
+- **Watcher 1.10 / installer 1.9.** Notify-only rules need watcher 1.9 or later; variables and the info button need
+  1.10 or later. The editor says which version a rule needs.
+- The JSON schema requires only `DialogMessage`; the app and the watcher enforce "KillProcess or Predicate".
+- First release with an installer package (see [Download](#download)).
+
+Earlier releases: [1.1](https://github.com/mrheathjones/LockdownBuilder/releases/tag/v1.1) (redesigned interface,
+dialog designer, Publish to Jamf Pro, bundled watcher installer),
+[1.0](https://github.com/mrheathjones/LockdownBuilder/releases/tag/v1.0) (first release).
 
 ## Add a rule in 2 minutes
 
@@ -60,8 +95,24 @@ watchers show `{{…}}` as typed and have no info button). The editor says which
 ## Publish to Jamf Pro (optional)
 
 In **Settings → Jamf Pro**, enter your server URL and an API client's ID and secret (Jamf Pro → Settings → API roles and
-clients), then **Test Connection**. The API role needs *Create*, *Read* and *Update macOS Configuration Profiles*, plus *Create*, *Read* and *Update Scripts* if you upload the
-watcher installer.
+clients), then **Test Connection**.
+
+### Jamf Pro API role privileges
+
+Create an API role with these privileges, then an API client that uses the role. Nothing else is needed; the app
+never reads computers, users or policies.
+
+| Privilege (Jamf Pro → Settings → API roles and clients) | Used by | API calls |
+|---|---|---|
+| **Read macOS Configuration Profiles** | Test Connection; *Check Jamf Pro* before a publish | `GET /JSSResource/osxconfigurationprofiles`, `GET …/name/<name>` |
+| **Create macOS Configuration Profiles** | *Create Profile* (a rule that doesn't exist on the server yet) | `POST /JSSResource/osxconfigurationprofiles/id/0` |
+| **Update macOS Configuration Profiles** | *Update Profile* (a rule that already exists, matched by name) | `PUT /JSSResource/osxconfigurationprofiles/id/<id>` |
+| **Read Scripts** | *Check* before uploading the watcher installer | `GET /api/v1/scripts?filter=name==…`, `GET /api/v1/scripts/<id>` |
+| **Create Scripts** | Uploading the installer for the first time | `POST /api/v1/scripts` |
+| **Update Scripts** | Re-uploading the installer under the same name | `PUT /api/v1/scripts/<id>` |
+
+The three *Scripts* privileges are only needed if you upload the watcher installer from Settings → Watcher. Every
+session also calls `POST /api/oauth/token` and `POST /api/v1/auth/invalidate-token`, which need no privilege.
 
 - Auth is OAuth client credentials. The client secret is stored in your login keychain, never in preferences or files,
   and every token is invalidated as soon as the request finishes.
