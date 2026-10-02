@@ -9,7 +9,7 @@ quitting them, but tells the user why in a prompt you design: your wording, your
 can take them somewhere useful such as Self Service. It can also act on a single action inside an app (for example
 opening one System Settings pane) rather than only on the whole app.
 
-> **Status:** version 1.3. Rule editor, validation, exports, dialog designer with editable message presets, test
+> **Status:** version 1.3.1. Rule editor, validation, exports, dialog designer with editable message presets, test
 > harness, target picker, predicate discovery, Jamf Pro publishing, and optional on-device Apple Intelligence help.
 
 ## Download
@@ -22,7 +22,7 @@ has not been through Apple's notary service, so macOS will refuse to open it on 
 (Control-click) the package and choose **Open**, or install it from the Terminal:
 
 ```bash
-sudo installer -pkg ~/Downloads/LockdownBuilder-1.3-unsigned.pkg -target /
+sudo installer -pkg ~/Downloads/LockdownBuilder-1.3.1-unsigned.pkg -target /
 ```
 
 If you'd rather not run an un-notarised package, build from source (see [Build](#build)).
@@ -46,6 +46,8 @@ If you'd rather not run an un-notarised package, build from source (see [Build](
 - **`{{appName}}` in presets** becomes the rule's process name (or “This app” for a notify-only rule) when the preset
   is applied. Watcher variables such as `{{companyName}}` stay in the message. Rules, plists and the watcher are
   unchanged.
+- **1.3.1:** the preset editor sheet grows with the window, so the preview is visible without scrolling in the main
+  window while it still fits the Settings window.
 
 ## What's new in 1.2
 

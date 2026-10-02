@@ -5,6 +5,10 @@ struct SettingsView: View {
     @Bindable var store: ProjectStore
     /// True when shown in the main window's detail pane (from the sidebar) rather than the Settings window.
     var embedded = false
+    /// Height of the whole settings area, for sheets that should use the room the window has. Measured here, not
+    /// inside the tabs: a geometry modifier on the TabView itself changes the toolbar-style tabs into an in-content
+    /// segmented control, and inside a toolbar-style tab the geometry callbacks never fire.
+    @State private var height: CGFloat = 0
 
     var body: some View {
         if embedded {
@@ -12,10 +16,12 @@ struct SettingsView: View {
                 .frame(maxWidth: 640)
                 .padding(.vertical, 16)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .readHeight($height)
                 .navigationTitle("Settings")
                 .navigationSubtitle("")
         } else {
             tabs.frame(width: 560, height: 560)
+                .readHeight($height)
         }
     }
 
@@ -25,13 +31,26 @@ struct SettingsView: View {
                 GeneralSettings(store: store)
             }
             Tab("Dialog", systemImage: "macwindow", value: .dialog) {
-                DialogSettings(store: store)
+                DialogSettings(store: store, availableHeight: height)
             }
             Tab("Watcher", systemImage: "shield.lefthalf.filled", value: .watcher) {
                 WatcherSettings(store: store)
             }
             Tab("Jamf Pro", systemImage: "icloud.and.arrow.up", value: .jamf) {
                 JamfSettings(store: store)
+            }
+        }
+    }
+}
+
+private extension View {
+    /// Reports this view's height through `binding` without changing the view hierarchy around it.
+    func readHeight(_ binding: Binding<CGFloat>) -> some View {
+        background {
+            GeometryReader { geometry in
+                Color.clear
+                    .onAppear { binding.wrappedValue = geometry.size.height }
+                    .onChange(of: geometry.size.height) { _, height in binding.wrappedValue = height }
             }
         }
     }
@@ -115,6 +134,8 @@ private struct DialogSettings: View {
     /// The preset open in the editor sheet: an existing one, a fresh copy, or a new blank one. Saved only on Save.
     @State private var editingPreset: DialogPreset?
     @State private var removingPreset: DialogPreset?
+    /// Height of the settings area (from `SettingsView`), so the preset sheet can use the room the window has.
+    var availableHeight: CGFloat = 0
 
     var body: some View {
         Form {
@@ -158,7 +179,7 @@ private struct DialogSettings: View {
                 caption("Starting points offered by the editor's Presets menu; applying one replaces the rule's message. \(DialogPreset.appNameToken) becomes the rule's process name (or “\(DialogPreset.appNameFallback)”) when a preset is applied. Watcher variables such as {{companyName}} stay in the message and are filled in when the dialog is shown.")
             }
             .sheet(item: $editingPreset) { preset in
-                PresetEditor(store: store, preset: preset)
+                PresetEditor(store: store, preset: preset, availableHeight: availableHeight)
             }
             .confirmationDialog(
                 "Remove the “\(removingPreset?.name ?? "")” preset?",
@@ -251,7 +272,15 @@ private struct DialogSettings: View {
 private struct PresetEditor: View {
     @Bindable var store: ProjectStore
     @State var preset: DialogPreset
+    /// Height of the settings area the sheet is shown over (0 when unknown).
+    var availableHeight: CGFloat = 0
     @Environment(\.dismiss) private var dismiss
+
+    /// Tall enough to show everything when the window allows, never taller than the window: at least 520 pt
+    /// (fits the 560 pt Settings window), at most the settings area less a margin, capped where the content stops growing.
+    private var sheetHeight: CGFloat {
+        availableHeight > 0 ? min(780, max(520, availableHeight - 40)) : 520
+    }
 
     private static let exampleApp = "Example App"
 
@@ -273,7 +302,7 @@ private struct PresetEditor: View {
     }
 
     var body: some View {
-        // Fixed size with a scrolling body: the sheet must fit inside the 560 × 560 pt Settings window as well as the main window.
+        // Scrolling body with pinned buttons; the height follows the window (see `sheetHeight`).
         VStack(alignment: .leading, spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
@@ -292,7 +321,7 @@ private struct PresetEditor: View {
                     VStack(alignment: .leading, spacing: 6) {
                         FieldLabel(title: "Preview", subtitle: "As a rule that quits “\(Self.exampleApp)” would show it.")
                         DialogPreviewView(rule: exampleRule, settings: store.settings)
-                            .frame(maxHeight: 180)
+                            .frame(maxHeight: 240)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
@@ -316,7 +345,7 @@ private struct PresetEditor: View {
             .padding(.horizontal, 20)
             .padding(.vertical, 14)
         }
-        .frame(width: 520, height: 540)
+        .frame(width: 520, height: sheetHeight)
     }
 }
 
