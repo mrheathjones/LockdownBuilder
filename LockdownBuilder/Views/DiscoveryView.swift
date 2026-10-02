@@ -6,6 +6,7 @@ struct DiscoveryView: View {
     @State private var model: DiscoveryModel
     @State private var tester = PredicateLiveTester()
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.ruleAssistant) private var assistant
 
     init(target: String, onUse: @escaping (String) -> Void) {
         self.onUse = onUse
@@ -80,7 +81,12 @@ struct DiscoveryView: View {
                 case .analysing:
                     HStack { ProgressView().controlSize(.small); Text("Ranking candidates…") }
                 case .results:
-                    Text(model.summary).font(.callout).foregroundStyle(.secondary)
+                    HStack {
+                        Text(model.summary).font(.callout).foregroundStyle(.secondary)
+                        Spacer()
+                        if !model.candidates.isEmpty { aiButton }
+                    }
+                    aiPanel
                 case .failed(let message):
                     Label(message, systemImage: "xmark.octagon.fill").foregroundStyle(.red)
                     Text("log stream needs an administrator account. Run Rule Builder as an admin user, or capture on a test Mac.")
@@ -111,6 +117,39 @@ struct DiscoveryView: View {
         }
     }
 
+    // MARK: Apple Intelligence (optional)
+
+    @ViewBuilder
+    private var aiButton: some View {
+        let reason = assistant.availability.unavailableReason
+        Button {
+            Task { await model.suggest(using: assistant) }
+        } label: {
+            Label("Suggest with Apple Intelligence", systemImage: "apple.intelligence")
+        }
+        .disabled(reason != nil || model.aiBusy)
+        .help(reason ?? "Ask the on-device model which of the top candidates is most specific to the action")
+    }
+
+    @ViewBuilder
+    private var aiPanel: some View {
+        if model.aiBusy {
+            HStack { ProgressView().controlSize(.small); Text("Asking the on-device model…") }
+        } else if let error = model.aiError {
+            Label(error, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+        } else if let suggestion = model.aiSuggestion {
+            VStack(alignment: .leading, spacing: 4) {
+                Label("Apple Intelligence picked:", systemImage: "apple.intelligence").font(.callout.bold())
+                Text(suggestion.predicate).font(.callout.monospaced()).textSelection(.enabled)
+                Text(suggestion.explanation).font(.callout)
+                Text("A suggestion, not a verdict: it's marked below and can only be used after its live Test fires.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            .padding(8)
+            .background(.purple.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+        }
+    }
+
     // MARK: Results
 
     private var results: some View {
@@ -123,7 +162,8 @@ struct DiscoveryView: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 10) {
                         ForEach(model.candidates) { candidate in
-                            CandidateRow(candidate: candidate, tester: tester, onUse: {
+                            CandidateRow(candidate: candidate, tester: tester,
+                                         isAIPick: model.aiSuggestion?.predicate == candidate.predicate, onUse: {
                                 tester.stop()
                                 onUse(candidate.predicate)
                                 dismiss()
@@ -139,7 +179,12 @@ struct DiscoveryView: View {
 private struct CandidateRow: View {
     let candidate: DiscoveryCandidate
     let tester: PredicateLiveTester
+    let isAIPick: Bool
     let onUse: () -> Void
+
+    private var canUse: Bool {
+        AIText.canUse(predicate: candidate.predicate, isAIPick: isAIPick, testedPredicate: tester.predicate, hits: tester.hits)
+    }
 
     private var isTesting: Bool { tester.predicate == candidate.predicate }
 
@@ -150,6 +195,12 @@ private struct CandidateRow: View {
                     .font(.callout.monospaced())
                     .textSelection(.enabled)
                 Spacer()
+                if isAIPick {
+                    Label("AI pick", systemImage: "apple.intelligence")
+                        .font(.caption.bold())
+                        .padding(.horizontal, 8).padding(.vertical, 2)
+                        .background(.purple.opacity(0.15), in: Capsule())
+                }
                 Text("\(candidate.score)")
                     .font(.caption.bold().monospacedDigit())
                     .padding(.horizontal, 8).padding(.vertical, 2)
@@ -174,11 +225,16 @@ private struct CandidateRow: View {
                 }
                 Button("Use") { onUse() }
                     .buttonStyle(.borderedProminent)
+                    .disabled(!canUse)
+                    .help(canUse ? "Use this predicate" : "Run Test and repeat the action first: AI picks must fire live before use")
             }
         }
         .font(.callout)
         .padding(10)
         .background(.background.secondary, in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            if isAIPick { RoundedRectangle(cornerRadius: 8).stroke(.purple.opacity(0.6), lineWidth: 1.5) }
+        }
     }
 }
 

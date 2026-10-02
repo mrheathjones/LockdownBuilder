@@ -3,6 +3,7 @@ import UniformTypeIdentifiers
 
 struct SettingsView: View {
     @Bindable var store: ProjectStore
+    @Environment(\.ruleAssistant) private var assistant
 
     var body: some View {
         Form {
@@ -43,6 +44,19 @@ struct SettingsView: View {
                 Text("Used by the dialog preview and Simulate Dialog. Match the watcher's banner (--bannerimage with --title none).")
                     .font(.caption).foregroundStyle(.secondary)
             }
+            Section("Apple Intelligence (optional)") {
+                Toggle("Use on-device Apple Intelligence", isOn: $store.settings.aiEnabled)
+                if store.settings.aiEnabled {
+                    if let reason = FoundationModelsAssistant().availability.unavailableReason {
+                        Label(reason, systemImage: "exclamationmark.triangle").font(.caption).foregroundStyle(.orange)
+                    } else {
+                        Label("Available. Runs on this Mac; nothing is sent anywhere.", systemImage: "checkmark.circle")
+                            .font(.caption).foregroundStyle(.green)
+                    }
+                }
+                Text("Adds “Draft message” and “Suggest with Apple Intelligence” in discovery. Everything else works without it, and AI output is never applied without you.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             Section("Output folder") {
                 LabeledContent("Default folder") {
                     Text(store.settings.defaultOutputFolder.isEmpty ? "None" : store.settings.defaultOutputFolder)
@@ -60,6 +74,6 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 520, height: 640)
+        .frame(width: 520, height: 720)
     }
 }

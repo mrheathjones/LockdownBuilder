@@ -4,8 +4,8 @@ A native macOS app for authoring, validating, testing and exporting rule files f
 (a Jamf-deployed LaunchDaemon that kills a process and shows a swiftDialog message). The output is a correct rule
 `.plist`, ready for Jamf *Application & Custom Settings → Upload*.
 
-> **Status: in progress.** Everything except the optional Foundation Models features is done: rule editor, validation,
-> exports, dialog designer, test harness, target picker and predicate discovery.
+> **Status:** feature-complete per the original brief: rule editor, validation, exports, dialog designer, test harness,
+> target picker, predicate discovery and optional on-device Apple Intelligence help. See [JOURNAL.md](JOURNAL.md).
 > See [JOURNAL.md](JOURNAL.md) for decisions and progress.
 
 ## Add a rule in 2 minutes
@@ -24,6 +24,18 @@ A native macOS app for authoring, validating, testing and exporting rule files f
 5. **⌘E** to export the plist (or `.mobileconfig`), then upload it in Jamf: *Application & Custom Settings → Upload*,
    preference domain = the file name without `.plist`. Optionally upload `restricted-item-rule.schema.json` as the
    custom schema.
+
+## Apple Intelligence (optional)
+
+On Macs with Apple Intelligence enabled, two features use the on-device model (Foundation Models). Nothing is sent off
+the Mac, and you can turn them off in Settings:
+
+- **Draft…** next to DialogMessage: describe what's blocked in one line, pick a tone, and get an editable draft with a
+  live preview. It only replaces your message when you click **Use Draft**.
+- **Suggest with Apple Intelligence** in discovery: the model picks the most specific of the top ranked candidates
+  and explains why. It can't write its own predicate, and its pick can only be used after its live **Test** fires.
+
+Everything else works without it. If it's unavailable, the buttons are disabled and say why.
 
 ## Rule format
 
@@ -48,7 +60,8 @@ schema field. They double as golden files for the tests.
 
 ## Build
 
-Requirements: macOS 26+ on Apple Silicon, Xcode 26+ (developed with Xcode 27). Pure `.xcodeproj`, no Swift packages,
+Requirements: macOS 26+ on Apple Silicon, Xcode 26+ (developed with Xcode 27 on macOS 27). Apple Intelligence is
+optional. Pure `.xcodeproj`, no Swift packages,
 no third-party dependencies, no network access, no telemetry.
 
 ```bash
@@ -56,7 +69,13 @@ xcodebuild -project LockdownBuilder.xcodeproj -scheme LockdownBuilder build
 xcodebuild -project LockdownBuilder.xcodeproj -scheme LockdownBuilder -destination 'platform=macOS' test
 ```
 
-Warnings are treated as errors. To regenerate `Samples/` after an intentional output change:
+Warnings are treated as errors. To also run the tests against the real on-device model (needs Apple Intelligence):
+
+```bash
+TEST_RUNNER_LIVE_AI=1 xcodebuild -project LockdownBuilder.xcodeproj -scheme LockdownBuilder -destination 'platform=macOS' test
+```
+
+To regenerate `Samples/` after an intentional output change:
 
 ```bash
 TEST_RUNNER_UPDATE_SAMPLES=1 xcodebuild -project LockdownBuilder.xcodeproj -scheme LockdownBuilder -destination 'platform=macOS' test

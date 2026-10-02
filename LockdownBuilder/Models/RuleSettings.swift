@@ -12,6 +12,8 @@ struct RuleSettings: Equatable, Codable, Sendable {
     var defaultOutputFolder = ""
     /// Banner image the watcher uses, for "Simulate dialog" and the dialog preview. Empty means no banner.
     var bannerImagePath = ""
+    /// Optional Apple Intelligence features (draft message, suggest predicate). Nothing depends on them.
+    var aiEnabled = true
 
     init() {}
 
@@ -24,6 +26,7 @@ struct RuleSettings: Equatable, Codable, Sendable {
         orgNameFriendly = try c.decodeIfPresent(String.self, forKey: .orgNameFriendly) ?? d.orgNameFriendly
         defaultOutputFolder = try c.decodeIfPresent(String.self, forKey: .defaultOutputFolder) ?? d.defaultOutputFolder
         bannerImagePath = try c.decodeIfPresent(String.self, forKey: .bannerImagePath) ?? d.bannerImagePath
+        aiEnabled = try c.decodeIfPresent(Bool.self, forKey: .aiEnabled) ?? d.aiEnabled
     }
 
     /// `<ORG_PLIST_DOMAIN>.<PREFERENCE>.<rule-name>`

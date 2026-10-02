@@ -31,6 +31,9 @@ final class DiscoveryModel {
     private(set) var secondsInWindow = 0
     private(set) var candidates: [DiscoveryCandidate] = []
     private(set) var summary = ""
+    private(set) var aiSuggestion: PredicateSuggestion?
+    private(set) var aiBusy = false
+    private(set) var aiError: String?
 
     let baselineSeconds = 10
     let maxActionSeconds = 60
@@ -91,8 +94,15 @@ final class DiscoveryModel {
         captureTask.cancel()
         let aggregate = await captureTask.value
         self.captureTask = nil
+        present(aggregate)
+    }
+
+    /// Ranks a finished recording and shows the results (also used by tests with fixture aggregates).
+    func present(_ aggregate: DiscoveryAggregate) {
         lastAggregate = aggregate
         candidates = DiscoveryRanker.rank(aggregate, target: target, hint: hint)
+        aiSuggestion = nil
+        aiError = nil
         summary = "\(aggregate.baselineLines.formatted()) baseline lines, \(aggregate.actionLines.formatted()) action lines, "
             + "\(aggregate.action.count.formatted()) distinct action line shapes, \(candidates.count) candidates."
         phase = .results
@@ -102,6 +112,21 @@ final class DiscoveryModel {
     func rerank() {
         guard let lastAggregate else { return }
         candidates = DiscoveryRanker.rank(lastAggregate, target: target, hint: hint)
+        aiSuggestion = nil
+    }
+
+    /// Asks the assistant to pick the most specific of the top candidates. The pick is always one of the
+    /// deterministic candidates and must still pass a live test before it can be used.
+    func suggest(using assistant: any RuleAssistant) async {
+        aiBusy = true
+        aiError = nil
+        aiSuggestion = nil
+        defer { aiBusy = false }
+        do {
+            aiSuggestion = try await assistant.suggestPredicate(from: candidates, target: target, hint: hint)
+        } catch {
+            aiError = error.localizedDescription
+        }
     }
 
     func cancel() {
@@ -115,6 +140,8 @@ final class DiscoveryModel {
     func startOver() {
         cancel()
         candidates = []
+        aiSuggestion = nil
+        aiError = nil
         phase = .ready
     }
 

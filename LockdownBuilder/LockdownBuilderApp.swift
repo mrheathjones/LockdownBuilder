@@ -7,6 +7,7 @@ struct LockdownBuilderApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView(store: store)
+                .environment(\.ruleAssistant, RuleAssistants.make(enabled: store.settings.aiEnabled))
         }
         .defaultSize(width: 1280, height: 820)
         .commands {
@@ -42,6 +43,7 @@ struct LockdownBuilderApp: App {
         }
         Settings {
             SettingsView(store: store)
+                .environment(\.ruleAssistant, RuleAssistants.make(enabled: store.settings.aiEnabled))
         }
     }
 

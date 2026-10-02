@@ -60,6 +60,8 @@ private struct RuleForm: View {
     @State private var liveTesting = false
     @State private var syntaxResult: (ok: Bool, text: String)?
     @State private var checkingSyntax = false
+    @State private var draftingMessage = false
+    @Environment(\.ruleAssistant) private var assistant
 
     private var issues: [ValidationIssue] { store.issues(for: draft) }
 
@@ -153,6 +155,7 @@ private struct RuleForm: View {
                     HStack {
                         Text("DialogMessage")
                         Spacer()
+                        aiDraftButton
                         Menu("Presets") {
                             ForEach(DialogPreset.allCases) { preset in
                                 Button(preset.rawValue) { pendingPreset = preset }
@@ -171,7 +174,7 @@ private struct RuleForm: View {
                 }
                 issueRows(for: .dialogMessage)
                 field("ButtonText", .buttonText, prompt: "OK", text: $draft.rule.buttonText.orEmpty)
-                field("ButtonAction", .buttonAction, prompt: "/Applications/Self Service.app", text: $draft.rule.buttonAction.orEmpty)
+                field("ButtonAction", .buttonAction, prompt: "None (closes the dialog)", text: $draft.rule.buttonAction.orEmpty)
                 HStack {
                     Text("Presets").font(.caption).foregroundStyle(.secondary)
                     Button("Self Service") { draft.rule.buttonAction = "/Applications/Self Service.app" }
@@ -179,7 +182,7 @@ private struct RuleForm: View {
                     Button("Clear") { draft.rule.buttonAction = nil }
                 }
                 .buttonStyle(.link).font(.caption)
-                field("DismissButtonText", .dismissButtonText, prompt: "Done (adds a second button)", text: $draft.rule.dismissButtonText.orEmpty)
+                field("DismissButtonText", .dismissButtonText, prompt: "None (one button)", text: $draft.rule.dismissButtonText.orEmpty)
             }
         }
         .formStyle(.grouped)
@@ -207,6 +210,11 @@ private struct RuleForm: View {
                 draft.rule.predicate = predicate
             }
         }
+        .sheet(isPresented: $draftingMessage) {
+            MessageDraftView(rule: draft.rule, settings: store.settings) { message in
+                draft.rule.dialogMessage = message
+            }
+        }
         .sheet(isPresented: $liveTesting) {
             PredicateLiveTestView(predicate: draft.rule.predicate ?? "")
         }
@@ -227,6 +235,18 @@ private struct RuleForm: View {
     }
 
     // MARK: Pieces
+
+    @ViewBuilder
+    private var aiDraftButton: some View {
+        let reason = assistant.availability.unavailableReason
+        Button {
+            draftingMessage = true
+        } label: {
+            Label("Draft…", systemImage: "apple.intelligence")
+        }
+        .disabled(reason != nil)
+        .help(reason ?? "Draft the message with on-device Apple Intelligence (you review it before it's used)")
+    }
 
     private var predicateTools: some View {
         VStack(alignment: .leading, spacing: 4) {
