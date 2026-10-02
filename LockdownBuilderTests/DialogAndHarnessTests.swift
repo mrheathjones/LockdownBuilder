@@ -258,3 +258,41 @@ struct ProcessRunnerTests {
         return (name, process)
     }
 }
+
+struct DialogLiveUpdateTests {
+    private let settings = RuleSettings()
+    private var base: RuleModel { BuiltInTemplates.appStore.rule(settings: RuleSettings()) }
+
+    @Test func newlinesAreEncodedSoEachCommandStaysOnOneLine() {
+        #expect(DialogLiveUpdate.encode("# T\n\nBody\r\nmore") == #"# T\n\nBody\nmore"#)
+        #expect(!DialogLiveUpdate.encode("a\nb").contains("\n"))
+    }
+
+    @Test func onlyChangedFieldsAreSent() {
+        var edited = base
+        #expect(DialogLiveUpdate.commands(from: base, to: edited, oldSettings: settings, newSettings: settings).isEmpty)
+        edited.dialogMessage = "# New\n\nText"
+        edited.buttonText = nil
+        #expect(DialogLiveUpdate.commands(from: base, to: edited, oldSettings: settings, newSettings: settings)
+                == [#"message: # New\n\nText"#, "button1text: OK"])
+        var renamed = base; renamed.dismissButtonText = "Close"
+        #expect(DialogLiveUpdate.commands(from: base, to: renamed, oldSettings: settings, newSettings: settings) == ["button2text: Close"])
+    }
+
+    @Test func orgTitleChangesOnlyWithoutABanner() {
+        var org = settings; org.orgNameFriendly = "Acme"
+        #expect(DialogLiveUpdate.commands(from: base, to: base, oldSettings: settings, newSettings: org) == ["title: Acme"])
+        var bannered = settings; bannered.bannerImagePath = "/b.png"
+        var bannerOrg = bannered; bannerOrg.orgNameFriendly = "Acme"
+        #expect(DialogLiveUpdate.commands(from: base, to: base, oldSettings: bannered, newSettings: bannerOrg).isEmpty)
+    }
+
+    @Test func addingOrRemovingButton2OrTheBannerNeedsARelaunch() {
+        var noDismiss = base; noDismiss.dismissButtonText = nil
+        #expect(DialogLiveUpdate.needsRelaunch(from: base, to: noDismiss, oldSettings: settings, newSettings: settings))
+        var renamed = base; renamed.dismissButtonText = "Close"
+        #expect(!DialogLiveUpdate.needsRelaunch(from: base, to: renamed, oldSettings: settings, newSettings: settings))
+        var bannered = settings; bannered.bannerImagePath = "/b.png"
+        #expect(DialogLiveUpdate.needsRelaunch(from: base, to: base, oldSettings: settings, newSettings: bannered))
+    }
+}

@@ -18,8 +18,8 @@ A native macOS app for authoring, validating, testing and exporting rule files f
      → **Start Action** → do it once → **Stop**. Click **Test** on the top candidate, repeat the action, and when it
      fires, **Use** it.
    - *Watch & Kill* to watch an extension and kill its host.
-4. **Dialog**: pick a preset, edit the Markdown, check the **Dialog** preview; **⌘T → Simulate Dialog** shows the real
-   swiftDialog window.
+4. **Dialog**: pick a preset (or **Draft…** with Apple Intelligence) and edit the Markdown. **Live Preview** opens the
+   real swiftDialog window and updates it as you type, like swiftDialog's builder.
 5. **⌘E** to export the plist (or `.mobileconfig`), then upload it in Jamf: *Application & Custom Settings → Upload*,
    preference domain = the file name without `.plist`. Optionally upload `restricted-item-rule.schema.json` as the
    custom schema.

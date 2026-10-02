@@ -338,6 +338,7 @@ private struct PreviewPane: View {
     let draft: RuleDraft
     enum Tab: String { case dialog, plist, mobileconfig }
     @AppStorage("previewTab") private var tab: Tab = .dialog
+    @State private var live = LiveDialogController()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -351,12 +352,7 @@ private struct PreviewPane: View {
                 .labelsHidden()
                 .fixedSize()
                 Spacer()
-                if tab == .dialog {
-                    Button("Copy Command", systemImage: "terminal") {
-                        FileDialogs.copyToClipboard(DialogCommand.shellCommand(for: draft.rule, settings: store.settings))
-                    }
-                    .help("Copy the swiftDialog command the watcher would run")
-                } else {
+                if tab != .dialog {
                     Button("Copy", systemImage: "doc.on.doc") {
                         FileDialogs.copyToClipboard(store.text(for: draft.rule, format: format))
                     }
@@ -365,8 +361,32 @@ private struct PreviewPane: View {
             }
             switch tab {
             case .dialog:
+                HStack {
+                    if live.isRunning {
+                        Button("Stop Live Preview", systemImage: "stop.circle") { live.stop() }
+                            .help("Close the live swiftDialog window")
+                    } else {
+                        Button("Live Preview", systemImage: "play.rectangle") {
+                            live.start(rule: draft.rule, settings: store.settings)
+                        }
+                        .disabled(!live.dialogInstalled)
+                        .help(live.dialogInstalled
+                              ? "Open the real swiftDialog window and update it as you edit (like swiftDialog's builder)"
+                              : "swiftDialog isn't installed at \(DialogCommand.dialogPath)")
+                    }
+                    Spacer()
+                    Button("Copy Command", systemImage: "terminal") {
+                        FileDialogs.copyToClipboard(DialogCommand.shellCommand(for: draft.rule, settings: store.settings))
+                    }
+                    .help("Copy the swiftDialog command the watcher would run")
+                }
+                if let status = live.status {
+                    Label(status, systemImage: live.isRunning ? "dot.radiowaves.left.and.right" : "info.circle")
+                        .font(.caption)
+                        .foregroundStyle(live.isRunning ? .green : .secondary)
+                }
                 DialogPreviewView(rule: draft.rule, settings: store.settings)
-                Text("Approximate preview. Use Test (⌘T) → Simulate Dialog to see the real swiftDialog window.")
+                Text("Approximate preview. Live Preview opens the real swiftDialog window and updates it as you type.")
                     .font(.caption).foregroundStyle(.secondary)
                 Spacer(minLength: 0)
             case .plist, .mobileconfig:
@@ -374,6 +394,10 @@ private struct PreviewPane: View {
             }
         }
         .padding()
+        // The live swiftDialog window follows edits and closes when the rule or editor goes away.
+        .onChange(of: draft.rule) { live.update(rule: draft.rule, settings: store.settings) }
+        .onChange(of: store.settings) { live.update(rule: draft.rule, settings: store.settings) }
+        .onDisappear { live.stop() }
     }
 
     private var format: ExportFormat { tab == .mobileconfig ? .mobileconfig : .plist }

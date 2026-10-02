@@ -12,16 +12,21 @@ struct DialogPreviewView: View {
         VStack(spacing: 0) {
             header
             ScrollView {
-                VStack(alignment: .leading, spacing: 10) {
-                    if let title = document.title {
-                        Text(title).font(.title.bold())
+                HStack(alignment: .top, spacing: 20) {
+                    // The watcher passes no --icon, so swiftDialog shows its default icon here.
+                    defaultIcon
+                    VStack(alignment: .leading, spacing: 10) {
+                        if let title = document.title {
+                            Text(title).font(.title.bold())
+                            Divider()
+                        }
+                        ForEach(Array(document.blocks.enumerated()), id: \.offset) { _, block in
+                            blockView(block)
+                        }
                     }
-                    ForEach(Array(document.blocks.enumerated()), id: \.offset) { _, block in
-                        blockView(block)
-                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .padding(20)
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
             HStack(spacing: 8) {
                 Spacer()
@@ -67,6 +72,18 @@ struct DialogPreviewView: View {
             .frame(height: 110)
             .clipShape(UnevenRoundedRectangle(topLeadingRadius: 12, topTrailingRadius: 12))
         }
+    }
+
+    private var defaultIcon: some View {
+        RoundedRectangle(cornerRadius: 14)
+            .fill(LinearGradient(colors: [.blue, .cyan.opacity(0.7)], startPoint: .top, endPoint: .bottom))
+            .frame(width: 64, height: 64)
+            .overlay {
+                Image(systemName: "message.fill")
+                    .font(.system(size: 30))
+                    .foregroundStyle(.white)
+            }
+            .accessibilityHidden(true)
     }
 
     @ViewBuilder

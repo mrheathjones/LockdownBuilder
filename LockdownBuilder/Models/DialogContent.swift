@@ -176,3 +176,37 @@ enum LineDiff {
         lines.contains { if case .same = $0 { false } else { true } }
     }
 }
+
+/// Live preview support: swiftDialog re-reads `--commandfile` and applies `message:`, `title:`,
+/// `button1text:` and `button2text:` to the open window. Anything else (adding/removing the second button,
+/// switching the banner) needs a relaunch.
+enum DialogLiveUpdate {
+    /// Command-file lines are newline-delimited, so real newlines in a value are sent as `\n`, which
+    /// swiftDialog turns back into line breaks.
+    static func encode(_ value: String) -> String {
+        value.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\n", with: "\\n")
+    }
+
+    static func needsRelaunch(from old: RuleModel, to new: RuleModel, oldSettings: RuleSettings, newSettings: RuleSettings) -> Bool {
+        (old.dismissButtonText == nil) != (new.dismissButtonText == nil)
+            || oldSettings.bannerImagePath != newSettings.bannerImagePath
+    }
+
+    /// Command lines that bring a dialog showing `old` up to date with `new` (empty if nothing visible changed).
+    static func commands(from old: RuleModel, to new: RuleModel, oldSettings: RuleSettings, newSettings: RuleSettings) -> [String] {
+        var lines: [String] = []
+        if newSettings.bannerImagePath.isEmpty, oldSettings.orgNameFriendly != newSettings.orgNameFriendly {
+            lines.append("title: \(encode(newSettings.orgNameFriendly))")
+        }
+        if old.dialogMessage != new.dialogMessage {
+            lines.append("message: \(encode(new.dialogMessage))")
+        }
+        if (old.buttonText ?? "OK") != (new.buttonText ?? "OK") {
+            lines.append("button1text: \(encode(new.buttonText ?? "OK"))")
+        }
+        if let text = new.dismissButtonText, text != old.dismissButtonText {
+            lines.append("button2text: \(encode(text))")
+        }
+        return lines
+    }
+}
