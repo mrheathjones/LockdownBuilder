@@ -26,6 +26,8 @@ struct DialogPreviewView: View {
                         .scaleEffect(geometry.size.width / width, anchor: .topLeading)
                 }
             }
+            // A picture, not controls: the scaled mock must never take clicks meant for what's around it.
+            .allowsHitTesting(false)
             .shadow(color: .black.opacity(0.3), radius: 14, y: 6)
             .accessibilityElement(children: .combine)
             .accessibilityLabel("Dialog preview, \(Int(width)) by \(Int(height)) points")
@@ -37,24 +39,23 @@ struct DialogPreviewView: View {
             header
             HStack(alignment: .top, spacing: 28) {
                 if rule.dialogShowIcon ?? true { icon }
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 14) {
-                        if let title = document.title {
-                            Text(title).font(.system(size: 30, weight: .bold))
-                            Divider()
-                        }
-                        ForEach(Array(document.blocks.enumerated()), id: \.offset) { _, block in
-                            blockView(block)
-                        }
+                VStack(alignment: horizontal, spacing: 14) {
+                    if let title = document.title {
+                        Text(title).font(.system(size: 30, weight: .bold))
+                        Divider()
                     }
-                    .font(.system(size: 20))
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    ForEach(Array(document.blocks.enumerated()), id: \.offset) { _, block in
+                        blockView(block)
+                    }
                 }
-                .scrollIndicators(.never)
+                .font(.system(size: 20))
+                .multilineTextAlignment(textAlignment)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: Alignment(horizontal: horizontal, vertical: vertical))
             }
             .padding(.horizontal, 28)
             .padding(.top, 24)
             .frame(maxHeight: .infinity, alignment: .top)
+            .clipped()
             HStack(spacing: 12) {
                 Spacer()
                 if let dismiss = rule.dismissButtonText {
@@ -67,6 +68,30 @@ struct DialogPreviewView: View {
         .background(.background)
         .clipShape(RoundedRectangle(cornerRadius: 22))
         .overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(.quaternary, lineWidth: 1))
+    }
+
+    private var horizontal: HorizontalAlignment {
+        switch rule.dialogMessageAlignment ?? .left {
+        case .left: .leading
+        case .center: .center
+        case .right: .trailing
+        }
+    }
+
+    private var textAlignment: TextAlignment {
+        switch rule.dialogMessageAlignment ?? .left {
+        case .left: .leading
+        case .center: .center
+        case .right: .trailing
+        }
+    }
+
+    private var vertical: VerticalAlignment {
+        switch rule.dialogMessagePosition ?? .top {
+        case .top: .top
+        case .center: .center
+        case .bottom: .bottom
+        }
     }
 
     @ViewBuilder
@@ -97,7 +122,7 @@ struct DialogPreviewView: View {
         }
     }
 
-    /// The icon from Settings (`--icon`), or a stand-in for swiftDialog's default icon.
+    /// The icon from Settings (`--icon`), or the watcher's standard red shield.
     @ViewBuilder
     private var icon: some View {
         let size = CGFloat(settings.iconSize ?? Self.defaultIconSize)
@@ -108,15 +133,11 @@ struct DialogPreviewView: View {
                 .frame(width: size, height: size)
                 .accessibilityHidden(true)
         } else {
-            RoundedRectangle(cornerRadius: size * 0.23)
-                .fill(LinearGradient(colors: [.blue, .cyan.opacity(0.7)], startPoint: .top, endPoint: .bottom))
+            Image(systemName: settings.iconPath.isEmpty ? "exclamationmark.shield.fill" : "photo")
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .foregroundStyle(settings.iconPath.isEmpty ? AnyShapeStyle(.red) : AnyShapeStyle(.secondary))
                 .frame(width: size, height: size)
-                .overlay {
-                    Image(systemName: settings.iconPath.isEmpty ? "message.fill" : "photo")
-                        .font(.system(size: size * 0.46))
-                        .foregroundStyle(.white)
-                }
-                .help(settings.iconPath.isEmpty ? "swiftDialog's default icon" : "Icon not found at \(settings.iconPath)")
                 .accessibilityHidden(true)
         }
     }

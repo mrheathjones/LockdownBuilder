@@ -184,10 +184,16 @@ private struct RuleForm: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: 5) {
+                    // Title-sized, but drawn as a field so it is clearly editable.
                     TextField("Rule name", text: $draft.rule.name, prompt: Text("rule-name"))
                         .textFieldStyle(.plain)
-                        .font(.system(size: 22, weight: .semibold))
+                        .font(.system(size: 20, weight: .semibold))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 7))
+                        .overlay(RoundedRectangle(cornerRadius: 7)
+                            .strokeBorder(hasError(.name) ? AnyShapeStyle(Color.red.opacity(0.5)) : AnyShapeStyle(.quaternary)))
                         .accessibilityLabel("Name")
                     Text(store.settings.ruleDomain(for: draft.rule.name))
                         .font(.system(size: 11, design: .monospaced))
@@ -198,8 +204,27 @@ private struct RuleForm: View {
                 statusPill
             }
             issueRows(for: .name)
+            HStack(spacing: 12) {
+                FieldLabel(title: "Display name", key: "PayloadDisplayName")
+                    .frame(width: 130, alignment: .leading)
+                TextField("Display name", text: displayName,
+                          prompt: Text(store.settings.defaultProfileName(for: draft.rule.name)))
+                    .labelsHidden()
+                    .accessibilityLabel("Display name")
+                    .help("The configuration profile's name in Jamf Pro and on the Mac. It is part of the .mobileconfig, not of the rule plist.")
+            }
             sentence
         }
+        .onChange(of: draft.rule.name) { old, new in
+            store.settings.moveProfileName(from: old, to: new)
+        }
+    }
+
+    /// The profile's friendly name, kept in Settings by rule name because the rule plist has no place for it.
+    private var displayName: Binding<String> {
+        Binding(
+            get: { store.settings.profileNames[draft.rule.name] ?? "" },
+            set: { store.settings.setProfileName($0, for: draft.rule.name) })
     }
 
     private var statusPill: some View {
@@ -535,7 +560,7 @@ private struct RuleForm: View {
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 1) {
                 Text("Dialog window").font(.system(size: 13, weight: .medium))
-                Text("Drag a slider to resize the preview. With Live Preview running, the real window follows.")
+                Text("Drag a slider to resize the preview. A simulated dialog that is open follows too.")
                     .font(.system(size: 11)).foregroundStyle(.secondary)
             }
             sizeSlider("Width", key: "DialogWidth", value: $draft.rule.dialogWidth,
@@ -546,7 +571,7 @@ private struct RuleForm: View {
             issueRows(for: .dialogHeight)
             HStack(spacing: 12) {
                 FieldLabel(title: "Position", key: "DialogPosition")
-                    .frame(width: 110, alignment: .leading)
+                    .frame(width: 160, alignment: .leading)
                 Picker("Position", selection: $draft.rule.dialogPosition) {
                     Text("Center (default)").tag(RuleModel.DialogPosition?.none)
                     Divider()
@@ -560,7 +585,35 @@ private struct RuleForm: View {
                 Button("Reset Size") { draft.rule.dialogWidth = nil; draft.rule.dialogHeight = nil }
                     .controlSize(.small)
                     .disabled(draft.rule.dialogWidth == nil && draft.rule.dialogHeight == nil)
-                    .help("Use swiftDialog's default size (\(DialogCommand.defaultWidth) × \(DialogCommand.defaultHeight))")
+                    .help("Use the watcher's default size (\(DialogCommand.defaultWidth) × \(DialogCommand.defaultHeight))")
+            }
+            HStack(spacing: 12) {
+                FieldLabel(title: "Message alignment", key: "DialogMessageAlignment")
+                    .frame(width: 160, alignment: .leading)
+                Picker("Message alignment", selection: choice(\.dialogMessageAlignment, default: .left)) {
+                    Image(systemName: "text.alignleft").accessibilityLabel("Left").tag(RuleModel.MessageAlignment.left)
+                    Image(systemName: "text.aligncenter").accessibilityLabel("Center").tag(RuleModel.MessageAlignment.center)
+                    Image(systemName: "text.alignright").accessibilityLabel("Right").tag(RuleModel.MessageAlignment.right)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
+                .help("Horizontal alignment of the message text")
+                Spacer(minLength: 0)
+            }
+            HStack(spacing: 12) {
+                FieldLabel(title: "Message position", key: "DialogMessagePosition")
+                    .frame(width: 160, alignment: .leading)
+                Picker("Message position", selection: choice(\.dialogMessagePosition, default: .top)) {
+                    Text("Top").tag(RuleModel.MessagePosition.top)
+                    Text("Center").tag(RuleModel.MessagePosition.center)
+                    Text("Bottom").tag(RuleModel.MessagePosition.bottom)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
+                .help("Vertical position of the message in the dialog")
+                Spacer(minLength: 0)
             }
             HStack(alignment: .top, spacing: 24) {
                 windowToggle("Show banner", key: "DialogShowBanner", flag(\.dialogShowBanner, default: true))
@@ -585,7 +638,7 @@ private struct RuleForm: View {
                             range: ClosedRange<Double>) -> some View {
         HStack(spacing: 12) {
             FieldLabel(title: title, key: key)
-                .frame(width: 110, alignment: .leading)
+                .frame(width: 160, alignment: .leading)
             Slider(value: Binding(
                 get: { min(max(Double(value.wrappedValue ?? defaultValue), range.lowerBound), range.upperBound) },
                 set: { value.wrappedValue = Int(($0 / 10).rounded()) * 10 }),
@@ -604,6 +657,13 @@ private struct RuleForm: View {
         }
         .toggleStyle(.checkbox)
         .accessibilityLabel(key)
+    }
+
+    /// A picker over an optional key: the default choice is stored as "absent".
+    private func choice<Value: Equatable>(_ keyPath: WritableKeyPath<RuleModel, Value?>, default defaultValue: Value) -> Binding<Value> {
+        Binding(
+            get: { draft.rule[keyPath: keyPath] ?? defaultValue },
+            set: { draft.rule[keyPath: keyPath] = $0 == defaultValue ? nil : $0 })
     }
 
     /// A checkbox over an optional key: the default value is stored as "absent".
@@ -788,6 +848,7 @@ private struct PreviewPane: View {
                     Button("Copy", systemImage: "doc.on.doc") {
                         FileDialogs.copyToClipboard(store.text(for: draft.rule, format: format))
                     }
+                    .labelStyle(.iconOnly)
                     .help("Copy the XML to the clipboard")
                 }
             }
@@ -813,21 +874,21 @@ private struct PreviewPane: View {
     private var dialogPreview: some View {
         HStack {
             if live.isRunning {
-                Button("Stop Live Preview", systemImage: "stop.circle") { live.stop() }
+                Button("Close Dialog", systemImage: "stop.circle") { live.stop() }
                     .tint(.green)
-                    .help("Close the live swiftDialog window")
+                    .help("Close the swiftDialog window")
                 Label("Following edits", systemImage: "circle.fill")
                     .labelStyle(.titleAndIcon)
                     .imageScale(.small)
                     .font(.system(size: 11))
                     .foregroundStyle(.green)
             } else {
-                Button("Live Preview", systemImage: "play.rectangle") {
+                Button("Simulate Dialog", systemImage: "macwindow") {
                     live.start(rule: draft.rule, settings: store.settings)
                 }
                 .disabled(!live.dialogInstalled)
                 .help(live.dialogInstalled
-                      ? "Open the real swiftDialog window and update it as you edit (like swiftDialog's builder)"
+                      ? "Open the real swiftDialog window with the watcher's flags. It follows your edits until you close it."
                       : "swiftDialog isn't installed at \(DialogCommand.dialogPath)")
             }
             Spacer()
@@ -848,7 +909,7 @@ private struct PreviewPane: View {
                 LinearGradient(colors: [.blue.opacity(0.35), .indigo.opacity(0.4), .purple.opacity(0.3)],
                                startPoint: .topLeading, endPoint: .bottomTrailing),
                 in: RoundedRectangle(cornerRadius: 10))
-        Text("Approximate preview. Live Preview opens the real swiftDialog window and updates it as you type.")
+        Text("This preview follows your edits and is approximate. Simulate Dialog opens the real swiftDialog window.")
             .font(.system(size: 11)).foregroundStyle(.secondary)
         Spacer(minLength: 0)
     }

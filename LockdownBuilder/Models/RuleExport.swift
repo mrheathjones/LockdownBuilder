@@ -26,6 +26,8 @@ enum RuleExport {
         if let v = rule.dialogBlurScreen { d["DialogBlurScreen"] = .bool(v) }
         if let v = rule.dialogShowBanner { d["DialogShowBanner"] = .bool(v) }
         if let v = rule.dialogShowIcon { d["DialogShowIcon"] = .bool(v) }
+        if let v = rule.dialogMessageAlignment { d["DialogMessageAlignment"] = .string(v.rawValue) }
+        if let v = rule.dialogMessagePosition { d["DialogMessagePosition"] = .string(v.rawValue) }
         return d
     }
 
@@ -103,7 +105,7 @@ enum RuleExport {
                 ] as [String: Any],
                 "DialogHeight": [
                     "title": "Dialog height (points)",
-                    "description": "Absent: swiftDialog's default height.",
+                    "description": "Absent: the watcher's default height (\(DialogCommand.defaultHeight)).",
                     "type": "integer",
                     "minimum": RuleModel.minimumDialogSize,
                 ] as [String: Any],
@@ -140,6 +142,20 @@ enum RuleExport {
                     "title": "Show the icon",
                     "type": "boolean",
                     "default": true,
+                ] as [String: Any],
+                "DialogMessageAlignment": [
+                    "title": "Message alignment",
+                    "description": "Horizontal alignment of the message text. Absent: left.",
+                    "type": "string",
+                    "enum": RuleModel.MessageAlignment.allCases.map(\.rawValue),
+                    "default": "left",
+                ] as [String: Any],
+                "DialogMessagePosition": [
+                    "title": "Message position",
+                    "description": "Vertical position of the message in the dialog. Absent: top.",
+                    "type": "string",
+                    "enum": RuleModel.MessagePosition.allCases.map(\.rawValue),
+                    "default": "top",
                 ] as [String: Any],
             ] as [String: Any],
         ]

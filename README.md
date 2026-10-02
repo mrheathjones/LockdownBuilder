@@ -18,17 +18,32 @@ A native macOS app for authoring, validating, testing and exporting rule files f
      → **Start Action** → do it once → **Stop**. Click **Test** on the top candidate, repeat the action, and when it
      fires, **Use** it.
    - *Watch & Kill* to watch an extension and kill its host.
-4. **Dialog**: pick a preset (or **Draft…** with Apple Intelligence) and edit the Markdown. **Live Preview** opens the
-   real swiftDialog window and updates it as you type, like swiftDialog's builder.
+4. **Dialog**: enter a title and message (pick a preset, or **Draft…** with Apple Intelligence), style the text with the
+   toolbar, and set the window's size, position and alignment. The preview follows every edit; **Simulate Dialog**
+   opens the real swiftDialog window with the watcher's flags.
 5. **⌘E** to export the plist (or `.mobileconfig`), then upload it in Jamf: *Application & Custom Settings → Upload*,
    preference domain = the file name without `.plist`. Optionally upload `restricted-item-rule.schema.json` as the
    custom schema. Or skip the upload: **Export → Publish to Jamf Pro…** (⇧⌘P) sends the `.mobileconfig` straight to
    your server (see below).
 
+## The watcher installer
+
+The app carries the watcher's Jamf installer script (`LockdownBuilder/Resources/Restricted-Item-Watcher-Installer.sh`,
+which embeds the watcher itself) and fills in your Settings: company name, preference domain, banner image and height,
+icon and icon size. In **Settings → Watcher**:
+
+- **Save Installer Script…** writes the ready-to-deploy script.
+- **Upload to Jamf Pro…** creates or updates it as a Jamf script (check first, then create or update). Add the script
+  to a policy to deploy; parameter 4 is `install` (default) or `uninstall`.
+
+The banner and icon paths are paths on the managed Macs, so deploy those files there. Watcher 1.8 or later is needed
+for the `Dialog*` keys.
+
 ## Publish to Jamf Pro (optional)
 
 In **Settings → Jamf Pro**, enter your server URL and an API client's ID and secret (Jamf Pro → Settings → API roles and
-clients), then **Test Connection**. The API role needs only *Create*, *Read* and *Update macOS Configuration Profiles*.
+clients), then **Test Connection**. The API role needs *Create*, *Read* and *Update macOS Configuration Profiles*, plus *Create*, *Read* and *Update Scripts* if you upload the
+watcher installer.
 
 - Auth is OAuth client credentials. The client secret is stored in your login keychain, never in preferences or files,
   and every token is invalidated as soon as the request finishes.
@@ -64,13 +79,15 @@ One plist per rule, named `<ORG_PLIST_DOMAIN>.<PREFERENCE>.<rule-name>.plist` (e
 | `ButtonText` | string | no | Primary button label, default `OK` |
 | `ButtonAction` | string | no | Absolute path or `scheme://…` URL; `file://` and control characters refused |
 | `DismissButtonText` | string | no | Adds a secondary button that only closes the dialog |
-| `DialogWidth`, `DialogHeight` | integer | no | Dialog size in points (200 or more). Absent: swiftDialog's default |
+| `DialogWidth`, `DialogHeight` | integer | no | Dialog size in points (200 or more). Absent: swiftDialog's width, and a height of 500 |
 | `DialogPosition` | string | no | `topleft`, `top`, `topright`, `left`, `center`, `right`, `bottomleft`, `bottom`, `bottomright`. Absent: centred |
 | `DialogOnTop` | boolean | no | Keep the dialog above other windows. Absent: true |
 | `DialogMoveable` | boolean | no | Let the user move the dialog. Absent: true |
 | `DialogBlurScreen` | boolean | no | Blur the screen behind the dialog. Absent: false |
 | `DialogShowBanner` | boolean | no | Show the banner image. False: the dialog title is the organisation name. Absent: true |
 | `DialogShowIcon` | boolean | no | Show the icon. Absent: true |
+| `DialogMessageAlignment` | string | no | `left`, `center` or `right`. Absent: left |
+| `DialogMessagePosition` | string | no | `top`, `center` or `bottom`. Absent: top |
 
 Rule names are lowercase kebab-case (`^[a-z0-9]+(-[a-z0-9]+)*$`); `watcher` is reserved. `KillProcess` may never be
 `launchd`, `kernel_task`, `loginwindow`, `WindowServer`, `bash`, `log`, `dialog` or `Restricted-Item-Watcher.sh`.

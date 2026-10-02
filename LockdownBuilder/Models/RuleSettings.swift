@@ -23,6 +23,8 @@ struct RuleSettings: Equatable, Codable, Sendable {
     var jamfClientID = ""
     /// Configuration profile names chosen when publishing, by rule name, so a republish updates the same profile.
     var profileNames: [String: String] = [:]
+    /// Name of the watcher installer script object in Jamf Pro. Empty means the default name.
+    var watcherScriptName = ""
     /// Optional Apple Intelligence features (draft message, suggest predicate). Nothing depends on them.
     var aiEnabled = true
 
@@ -43,6 +45,7 @@ struct RuleSettings: Equatable, Codable, Sendable {
         jamfURL = try c.decodeIfPresent(String.self, forKey: .jamfURL) ?? d.jamfURL
         jamfClientID = try c.decodeIfPresent(String.self, forKey: .jamfClientID) ?? d.jamfClientID
         profileNames = try c.decodeIfPresent([String: String].self, forKey: .profileNames) ?? d.profileNames
+        watcherScriptName = try c.decodeIfPresent(String.self, forKey: .watcherScriptName) ?? d.watcherScriptName
         aiEnabled = try c.decodeIfPresent(Bool.self, forKey: .aiEnabled) ?? d.aiEnabled
     }
 
@@ -68,6 +71,18 @@ struct RuleSettings: Equatable, Codable, Sendable {
     func profileName(for ruleName: String) -> String {
         if let custom = profileNames[ruleName]?.trimmingCharacters(in: .whitespaces), !custom.isEmpty { return custom }
         return defaultProfileName(for: ruleName)
+    }
+
+    /// Sets or clears the display name chosen for a rule. Blank, or the same as the default, means "use the default".
+    mutating func setProfileName(_ name: String, for ruleName: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        profileNames[ruleName] = trimmed.isEmpty || name == defaultProfileName(for: ruleName) ? nil : name
+    }
+
+    /// Carries a chosen display name over when its rule is renamed.
+    mutating func moveProfileName(from oldRuleName: String, to newRuleName: String) {
+        guard oldRuleName != newRuleName, let name = profileNames.removeValue(forKey: oldRuleName) else { return }
+        if !newRuleName.isEmpty { profileNames[newRuleName] = name }
     }
 
     /// Recovers a rule name from a file name produced by `fileName(for:)`, or nil if it doesn't match.

@@ -27,6 +27,14 @@ struct RuleModel: Equatable, Hashable, Sendable {
     /// Whether this rule's dialog shows the banner and icon set in Settings. Absent means shown.
     var dialogShowBanner: Bool?
     var dialogShowIcon: Bool?
+    /// Where the message text sits in the dialog. Absent means left-aligned at the top.
+    var dialogMessageAlignment: MessageAlignment?
+    var dialogMessagePosition: MessagePosition?
+
+    /// swiftDialog's `--messagealignment` values.
+    enum MessageAlignment: String, CaseIterable, Sendable { case left, center, right }
+    /// swiftDialog's `--messageposition` values.
+    enum MessagePosition: String, CaseIterable, Sendable { case top, center, bottom }
 
     /// swiftDialog's `--position` values.
     enum DialogPosition: String, CaseIterable, Sendable {
@@ -52,7 +60,9 @@ struct RuleModel: Equatable, Hashable, Sendable {
         dialogMoveable: Bool? = nil,
         dialogBlurScreen: Bool? = nil,
         dialogShowBanner: Bool? = nil,
-        dialogShowIcon: Bool? = nil
+        dialogShowIcon: Bool? = nil,
+        dialogMessageAlignment: MessageAlignment? = nil,
+        dialogMessagePosition: MessagePosition? = nil
     ) {
         self.name = name
         self.killProcess = killProcess
@@ -71,6 +81,8 @@ struct RuleModel: Equatable, Hashable, Sendable {
         self.dialogBlurScreen = dialogBlurScreen
         self.dialogShowBanner = dialogShowBanner
         self.dialogShowIcon = dialogShowIcon
+        self.dialogMessageAlignment = dialogMessageAlignment
+        self.dialogMessagePosition = dialogMessagePosition
     }
 
     enum Kind: Sendable {

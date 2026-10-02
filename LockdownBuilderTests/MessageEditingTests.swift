@@ -111,8 +111,9 @@ struct BannerAndIconTests {
         var s = branded
         #expect(!DialogCommand.arguments(for: rule, settings: s).contains { $0 == "--bannerheight" || $0 == "--iconsize" })
         s.bannerHeight = 90; s.iconSize = 120
-        #expect(Array(DialogCommand.arguments(for: rule, settings: s).prefix(10))
-                == ["--bannerimage", "/b.png", "--title", "none", "--bannerheight", "90", "--icon", "/i.png", "--iconsize", "120"])
+        let args = DialogCommand.arguments(for: rule, settings: s)
+        #expect(Array(args.suffix(6)) == ["--bannerimage", "/b.png", "--title", "none", "--bannerheight", "90"])
+        #expect(Array(args[6..<10]) == ["--icon", "/i.png", "--iconsize", "120"])
     }
 
     @Test func aRuleCanTurnTheBannerAndIconOff() {
@@ -120,7 +121,9 @@ struct BannerAndIconTests {
         rule.dialogShowBanner = false
         rule.dialogShowIcon = false
         var s = branded; s.bannerHeight = 90; s.iconSize = 120
-        #expect(Array(DialogCommand.arguments(for: rule, settings: s).prefix(4)) == ["--title", "Company Name", "--icon", "none"])
+        let args = DialogCommand.arguments(for: rule, settings: s)
+        #expect(Array(args.suffix(2)) == ["--title", "Company Name"])
+        #expect(args[args.firstIndex(of: "--icon")! + 1] == "none")
         #expect(!DialogCommand.arguments(for: rule, settings: s).contains { ["--bannerimage", "--bannerheight", "--iconsize"].contains($0) })
         let text = RuleExport.plist(for: rule)
         #expect(text.contains("<key>DialogShowBanner</key>\n\t<false/>") && text.contains("<key>DialogShowIcon</key>\n\t<false/>"))
@@ -135,7 +138,7 @@ struct BannerAndIconTests {
                 == ["width: 600", "height: 300"])
         // Back to the default size.
         #expect(DialogLiveUpdate.commands(from: sized, to: base, oldSettings: settings, newSettings: settings)
-                == ["width: 820", "height: 380"])
+                == ["width: 820", "height: 500"])
     }
 
     @Test func brandingChangesRelaunchTheLivePreview() {

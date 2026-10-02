@@ -193,9 +193,16 @@ struct JamfClientTests {
     }
 }
 
-private struct FakeJamfAPI: JamfAPI {
+struct FakeJamfAPI: JamfAPI {
     var existingID: Int?
     var uploads = Uploads()
+
+    func findScript(named name: String, _ connection: JamfConnection) async throws -> Int? { existingID }
+
+    func uploadScript(name: String, contents: String, existingID: Int?, _ connection: JamfConnection) async throws -> Int {
+        uploads.add((name, contents, existingID, connection))
+        return existingID ?? 77
+    }
 
     final class Uploads: @unchecked Sendable {
         private let lock = NSLock()
@@ -355,12 +362,35 @@ struct BrandingSettingsTests {
         #expect(RuleExport.mobileconfig(for: rule, settings: s).contains("<string>Block fm CLI</string>"))
     }
 
-    @Test func iconIsPassedOnlyWhenSet() {
+    @Test func aDisplayNameIsStoredOnlyWhenItDiffersAndFollowsARename() {
+        var s = RuleSettings()
+        s.setProfileName("Block the App Store", for: "app-store")
+        #expect(s.profileName(for: "app-store") == "Block the App Store")
+        let rule = BuiltInTemplates.appStore.rule(settings: s)
+        #expect(RuleExport.mobileconfig(for: rule, settings: s).contains("<key>PayloadDisplayName</key>\n\t<string>Block the App Store</string>"))
+        // The rule plist itself never carries it.
+        #expect(!RuleExport.plist(for: rule).contains("Block the App Store"))
+
+        s.moveProfileName(from: "app-store", to: "mac-app-store")
+        #expect(s.profileNames == ["mac-app-store": "Block the App Store"])
+        #expect(s.profileName(for: "app-store") == "Restrict - app-store")
+
+        s.setProfileName("  ", for: "mac-app-store")
+        #expect(s.profileNames.isEmpty)
+        s.setProfileName("Restrict - fm", for: "fm")
+        #expect(s.profileNames.isEmpty)
+    }
+
+    @Test func iconComesFromSettingsOrIsTheWatchersShield() {
         let rule = TestSupport.validRule()
-        #expect(!DialogCommand.arguments(for: rule, settings: RuleSettings()).contains("--icon"))
+        func icon(_ settings: RuleSettings) -> String {
+            let args = DialogCommand.arguments(for: rule, settings: settings)
+            return args[args.firstIndex(of: "--icon")! + 1]
+        }
+        // Without an icon in Settings the watcher shows its standard shield.
+        #expect(icon(RuleSettings()) == DialogCommand.defaultIcon)
         var s = RuleSettings(); s.iconPath = "/Library/Org/icon.png"
-        let args = DialogCommand.arguments(for: rule, settings: s)
-        #expect(Array(args.prefix(4)) == ["--title", "Company Name", "--icon", "/Library/Org/icon.png"])
+        #expect(icon(s) == "/Library/Org/icon.png")
         #expect(DialogLiveUpdate.needsRelaunch(from: rule, to: rule, oldSettings: RuleSettings(), newSettings: s))
     }
 

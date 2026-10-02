@@ -28,7 +28,7 @@
       "type" : "boolean"
     },
     "DialogHeight" : {
-      "description" : "Absent: swiftDialog's default height.",
+      "description" : "Absent: the watcher's default height (500).",
       "minimum" : 200,
       "title" : "Dialog height (points)",
       "type" : "integer"
@@ -37,6 +37,28 @@
       "description" : "swiftDialog Markdown. Start with “# Title” for a large bold title. Real newlines and blank lines make paragraphs.",
       "minLength" : 1,
       "title" : "Dialog message",
+      "type" : "string"
+    },
+    "DialogMessageAlignment" : {
+      "default" : "left",
+      "description" : "Horizontal alignment of the message text. Absent: left.",
+      "enum" : [
+        "left",
+        "center",
+        "right"
+      ],
+      "title" : "Message alignment",
+      "type" : "string"
+    },
+    "DialogMessagePosition" : {
+      "default" : "top",
+      "description" : "Vertical position of the message in the dialog. Absent: top.",
+      "enum" : [
+        "top",
+        "center",
+        "bottom"
+      ],
+      "title" : "Message position",
       "type" : "string"
     },
     "DialogMoveable" : {

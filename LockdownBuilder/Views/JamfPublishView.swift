@@ -64,8 +64,8 @@ struct JamfPublishView: View {
     private var form: some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 6) {
-                FieldLabel(title: "Configuration profile name", key: "PayloadDisplayName")
-                TextField("Configuration profile name", text: $model.name,
+                FieldLabel(title: "Display name", key: "PayloadDisplayName")
+                TextField("Display name", text: $model.name,
                           prompt: Text(store.settings.defaultProfileName(for: draft.rule.name)))
                     .textFieldStyle(.roundedBorder)
                     .labelsHidden()
@@ -123,8 +123,7 @@ struct JamfPublishView: View {
         if case .ready(let existingID) = model.state {
             Button(existingID == nil ? "Create Profile" : "Update Profile") {
                 // The chosen name is remembered so the exported payload and the next publish use it too.
-                let isDefault = model.trimmedName == store.settings.defaultProfileName(for: draft.rule.name)
-                store.settings.profileNames[draft.rule.name] = isDefault ? nil : model.trimmedName
+                store.settings.setProfileName(model.trimmedName, for: draft.rule.name)
                 Task { await model.publish(settings: store.settings) }
             }
             .buttonStyle(.borderedProminent)

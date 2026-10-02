@@ -19,6 +19,8 @@ enum RuleField: String, Sendable, CaseIterable {
     case dialogBlurScreen = "DialogBlurScreen"
     case dialogShowBanner = "DialogShowBanner"
     case dialogShowIcon = "DialogShowIcon"
+    case dialogMessageAlignment = "DialogMessageAlignment"
+    case dialogMessagePosition = "DialogMessagePosition"
     case file = "File"
 }
 
@@ -36,7 +38,7 @@ enum ValidationCode: String, Sendable {
     case killProcessDenylisted, processNameUnmatchable
     case predicateWithWatchProcess, watchProcessSameAsKill
     case cooldownNegative
-    case dialogSizeTooSmall, dialogPositionUnknown
+    case dialogSizeTooSmall, dialogPositionUnknown, dialogChoiceUnknown
     case buttonActionInvalid, buttonActionFileScheme, buttonActionControlCharacters
     case messageIllegalCharacters
     case plistUnreadable

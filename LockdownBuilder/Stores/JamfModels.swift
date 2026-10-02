@@ -154,3 +154,62 @@ final class JamfPublishModel {
         }
     }
 }
+
+/// Settings → Watcher: uploads the generated installer to Jamf Pro as a script. Same two steps as
+/// publishing a profile: a read-only check, then create or update.
+@MainActor
+@Observable
+final class WatcherUploadModel {
+    typealias State = JamfPublishModel.State
+
+    private(set) var state: State = .idle
+    private let api: any JamfAPI
+    private let secrets: any SecretStore
+
+    init(api: any JamfAPI = JamfProClient(), secrets: any SecretStore = KeychainSecretStore()) {
+        self.api = api
+        self.secrets = secrets
+    }
+
+    var isBusy: Bool { state == .checking || state == .publishing }
+
+    /// A check only describes the name and server it ran against.
+    func reset() {
+        if !isBusy { state = .idle }
+    }
+
+    static func scriptName(_ settings: RuleSettings) -> String {
+        let name = settings.watcherScriptName.trimmingCharacters(in: .whitespaces)
+        return name.isEmpty ? WatcherInstaller.defaultScriptName : name
+    }
+
+    private func connection(_ settings: RuleSettings) throws -> JamfConnection {
+        guard let url = JamfConnection.normalizedURL(settings.jamfURL) else { throw JamfError.invalidURL }
+        let secret = try secrets.read() ?? ""
+        let clientID = settings.jamfClientID.trimmingCharacters(in: .whitespaces)
+        guard !clientID.isEmpty, !secret.isEmpty else { throw JamfError.missingCredentials }
+        return JamfConnection(baseURL: url, clientID: clientID, clientSecret: secret)
+    }
+
+    func check(settings: RuleSettings) async {
+        guard !isBusy else { return }
+        state = .checking
+        do {
+            state = .ready(existingID: try await api.findScript(named: Self.scriptName(settings), connection(settings)))
+        } catch {
+            state = .failed(error.localizedDescription)
+        }
+    }
+
+    func upload(script: String, settings: RuleSettings) async {
+        guard case .ready(let existingID) = state else { return }
+        state = .publishing
+        do {
+            let id = try await api.uploadScript(
+                name: Self.scriptName(settings), contents: script, existingID: existingID, connection(settings))
+            state = .done(id: id, created: existingID == nil)
+        } catch {
+            state = .failed(error.localizedDescription)
+        }
+    }
+}

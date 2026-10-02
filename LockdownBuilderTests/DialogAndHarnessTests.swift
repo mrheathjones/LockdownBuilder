@@ -8,11 +8,13 @@ struct DialogCommandTests {
     @Test func withoutBannerUsesOrgTitle() {
         let args = DialogCommand.arguments(for: appStore, settings: RuleSettings())
         #expect(args == [
-            "--title", "Company Name",
+            "--height", "500",
             "--message", appStore.dialogMessage,
             "--button1text", "Self Service",
-            "--button2text", "Done",
+            "--icon", DialogCommand.defaultIcon,
             "--ontop", "--moveable",
+            "--button2text", "Done",
+            "--title", "Company Name",
         ])
     }
 
@@ -20,10 +22,10 @@ struct DialogCommandTests {
         var settings = RuleSettings(); settings.bannerImagePath = "/Library/Org/banner.png"
         let rule = BuiltInTemplates.freeform.rule(settings: settings)
         let args = DialogCommand.arguments(for: rule, settings: settings)
-        #expect(Array(args.prefix(4)) == ["--bannerimage", "/Library/Org/banner.png", "--title", "none"])
+        #expect(Array(args.suffix(4)) == ["--bannerimage", "/Library/Org/banner.png", "--title", "none"])
         #expect(args.contains("--button1text") && args[args.firstIndex(of: "--button1text")! + 1] == "OK")
         #expect(!args.contains("--button2text"))
-        #expect(Array(args.suffix(2)) == ["--ontop", "--moveable"])
+        #expect(args.contains("--ontop") && args.contains("--moveable"))
     }
 
     @Test func messageIsPassedVerbatimAsOneArgument() {

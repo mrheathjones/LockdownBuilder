@@ -1,16 +1,16 @@
 import Foundation
 
-/// The swiftDialog invocation the watcher makes, reproduced exactly so "Simulate dialog" shows what users will see.
+/// The swiftDialog invocation the watcher makes, reproduced flag for flag (and in the watcher's order) so
+/// "Simulate Dialog" shows what users will see. Keep in step with `show_rule_dialog` in the watcher script.
 enum DialogCommand {
     static let dialogPath = "/usr/local/bin/dialog"
 
-    /// `--bannerimage <img> --title none [--icon <img>] --message … --button1text … [--button2text …] --ontop --moveable`;
-    /// without a banner, `--title "<org>"` instead of the banner flags. `--icon` only when an icon is set.
-    /// The rule's window options add `--width`, `--height`, `--position`, `--blurscreen` and can drop
-    /// `--ontop` / `--moveable`; a rule without them gets exactly the flags above.
-    /// swiftDialog's own window size, used when a rule sets none.
+    /// The watcher's window height when a rule sets none (its `appSizeSmall`).
+    static let defaultHeight = 500
+    /// swiftDialog's own width, used when a rule sets none.
     static let defaultWidth = 820
-    static let defaultHeight = 380
+    /// The watcher's icon when Settings has none.
+    static let defaultIcon = "SF=exclamationmark.shield.fill,colour=red"
 
     /// The banner is shown when Settings has one and the rule hasn't turned it off.
     static func showsBanner(_ rule: RuleModel, settings: RuleSettings) -> Bool {
@@ -18,28 +18,31 @@ enum DialogCommand {
     }
 
     static func arguments(for rule: RuleModel, settings: RuleSettings) -> [String] {
-        var args: [String] = []
+        var args = [
+            "--height", String(rule.dialogHeight ?? defaultHeight),
+            "--message", rule.dialogMessage,
+            "--button1text", rule.buttonText ?? "OK",
+        ]
+        if let width = rule.dialogWidth { args += ["--width", String(width)] }
+        if let position = rule.dialogPosition { args += ["--position", position.rawValue] }
+        if let alignment = rule.dialogMessageAlignment { args += ["--messagealignment", alignment.rawValue] }
+        if let position = rule.dialogMessagePosition { args += ["--messageposition", position.rawValue] }
+        if rule.dialogShowIcon == false {
+            args += ["--icon", "none"]
+        } else {
+            args += ["--icon", settings.iconPath.isEmpty ? defaultIcon : settings.iconPath]
+            if let size = settings.iconSize { args += ["--iconsize", String(size)] }
+        }
+        if rule.dialogOnTop ?? true { args.append("--ontop") }
+        if rule.dialogMoveable ?? true { args.append("--moveable") }
+        if rule.dialogBlurScreen ?? false { args.append("--blurscreen") }
+        if let dismiss = rule.dismissButtonText { args += ["--button2text", dismiss] }
         if showsBanner(rule, settings: settings) {
             args += ["--bannerimage", settings.bannerImagePath, "--title", "none"]
             if let height = settings.bannerHeight { args += ["--bannerheight", String(height)] }
         } else {
             args += ["--title", settings.orgNameFriendly]
         }
-        if rule.dialogShowIcon == false {
-            args += ["--icon", "none"]
-        } else {
-            if !settings.iconPath.isEmpty { args += ["--icon", settings.iconPath] }
-            if let size = settings.iconSize { args += ["--iconsize", String(size)] }
-        }
-        args += ["--message", rule.dialogMessage]
-        args += ["--button1text", rule.buttonText ?? "OK"]
-        if let dismiss = rule.dismissButtonText { args += ["--button2text", dismiss] }
-        if let width = rule.dialogWidth { args += ["--width", String(width)] }
-        if let height = rule.dialogHeight { args += ["--height", String(height)] }
-        if let position = rule.dialogPosition { args += ["--position", position.rawValue] }
-        if rule.dialogOnTop ?? true { args.append("--ontop") }
-        if rule.dialogMoveable ?? true { args.append("--moveable") }
-        if rule.dialogBlurScreen ?? false { args.append("--blurscreen") }
         return args
     }
 
@@ -223,7 +226,8 @@ enum DialogLiveUpdate {
     private static func windowOptions(_ rule: RuleModel) -> [String] {
         // Width and height are not here: the open window resizes through the command file.
         [rule.dialogPosition?.rawValue, rule.dialogOnTop.map(String.init), rule.dialogMoveable.map(String.init),
-         rule.dialogBlurScreen.map(String.init), rule.dialogShowBanner.map(String.init), rule.dialogShowIcon.map(String.init)]
+         rule.dialogBlurScreen.map(String.init), rule.dialogShowBanner.map(String.init), rule.dialogShowIcon.map(String.init),
+         rule.dialogMessageAlignment?.rawValue, rule.dialogMessagePosition?.rawValue]
             .map { $0 ?? "-" }
     }
 

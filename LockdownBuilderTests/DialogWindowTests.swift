@@ -17,12 +17,16 @@ struct DialogWindowTests {
     @Test func aRuleWithoutWindowOptionsExportsAndRunsExactlyAsBefore() {
         let rule = TestSupport.validRule()
         #expect(Set(RuleExport.plistDictionary(for: rule).keys) == ["KillProcess", "DialogMessage"])
-        #expect(Array(DialogCommand.arguments(for: rule, settings: RuleSettings()).suffix(2)) == ["--ontop", "--moveable"])
+        let args = DialogCommand.arguments(for: rule, settings: RuleSettings())
+        #expect(args.contains("--ontop") && args.contains("--moveable"))
+        #expect(!args.contains { ["--width", "--position", "--blurscreen"].contains($0) })
     }
 
     @Test func windowOptionsBecomeSwiftDialogFlags() {
         let args = DialogCommand.arguments(for: custom, settings: RuleSettings())
-        #expect(Array(args.suffix(7)) == ["--width", "640", "--height", "360", "--position", "topright", "--blurscreen"])
+        #expect(Array(args.prefix(2)) == ["--height", "360"])
+        #expect(Array(args[6..<10]) == ["--width", "640", "--position", "topright"])
+        #expect(args.contains("--blurscreen"))
         #expect(!args.contains("--ontop") && !args.contains("--moveable"))
     }
 

@@ -16,7 +16,7 @@ enum RuleImporter {
         "KillProcess", "DialogMessage", "Predicate", "WatchProcess",
         "CooldownSeconds", "ButtonText", "ButtonAction", "DismissButtonText",
         "DialogWidth", "DialogHeight", "DialogPosition", "DialogOnTop", "DialogMoveable", "DialogBlurScreen",
-        "DialogShowBanner", "DialogShowIcon",
+        "DialogShowBanner", "DialogShowIcon", "DialogMessageAlignment", "DialogMessagePosition",
     ]
 
     static func importRule(data: Data, name: String) -> RuleImportResult {
@@ -69,6 +69,16 @@ enum RuleImporter {
             }
         }
 
+        func choice<T: RawRepresentable & CaseIterable>(_ key: String, field: RuleField, _ type: T.Type) -> T?
+        where T.RawValue == String {
+            guard let raw = string(key, field: field) else { return nil }
+            if let value = T(rawValue: raw) { return value }
+            issues.append(ValidationIssue(
+                field: field, severity: .error, code: .dialogChoiceUnknown,
+                message: "\(key) “\(raw)” isn't one of \(T.allCases.map(\.rawValue).joined(separator: ", "))."))
+            return nil
+        }
+
         let rule = RuleModel(
             name: name,
             killProcess: string("KillProcess", field: .killProcess) ?? "",
@@ -86,7 +96,9 @@ enum RuleImporter {
             dialogMoveable: bool("DialogMoveable", field: .dialogMoveable),
             dialogBlurScreen: bool("DialogBlurScreen", field: .dialogBlurScreen),
             dialogShowBanner: bool("DialogShowBanner", field: .dialogShowBanner),
-            dialogShowIcon: bool("DialogShowIcon", field: .dialogShowIcon)
+            dialogShowIcon: bool("DialogShowIcon", field: .dialogShowIcon),
+            dialogMessageAlignment: choice("DialogMessageAlignment", field: .dialogMessageAlignment, RuleModel.MessageAlignment.self),
+            dialogMessagePosition: choice("DialogMessagePosition", field: .dialogMessagePosition, RuleModel.MessagePosition.self)
         )
 
         for key in dict.keys.sorted() where !knownKeys.contains(key) {
