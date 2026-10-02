@@ -4,6 +4,11 @@ A native macOS app for authoring, validating, testing and exporting rule files f
 (a Jamf-deployed LaunchDaemon that kills a process and shows a swiftDialog message). The output is a correct rule
 `.plist`, ready for Jamf *Application & Custom Settings → Upload*.
 
+The watcher is an alternative to Jamf Pro's **Restricted Software**. It restricts apps and processes the same way, by
+quitting them, but tells the user why in a prompt you design: your wording, your banner and icon, and a button that
+can take them somewhere useful such as Self Service. It can also act on a single action inside an app (for example
+opening one System Settings pane) rather than only on the whole app.
+
 > **Status:** feature-complete per the original brief: rule editor, validation, exports, dialog designer, test harness,
 > target picker, predicate discovery and optional on-device Apple Intelligence help.
 
