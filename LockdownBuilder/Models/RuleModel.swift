@@ -5,7 +5,7 @@ import Foundation
 ///
 /// Optional keys are `nil` when absent. A present-but-empty string is *invalid* (the watcher treats
 /// wrong types and empty strings as errors), so the editor maps an empty field to `nil`.
-struct RuleModel: Equatable, Hashable, Sendable {
+struct RuleModel: Equatable, Hashable, Codable, Sendable {
     /// Lowercase kebab-case; becomes the last component of the preference domain / file name.
     var name: String
     /// Required unless the rule has a `predicate`: an event rule without it is notify-only (dialog, no kill).
@@ -38,12 +38,12 @@ struct RuleModel: Equatable, Hashable, Sendable {
     var dialogMessagePosition: MessagePosition?
 
     /// swiftDialog's `--messagealignment` values.
-    enum MessageAlignment: String, CaseIterable, Sendable { case left, center, right }
+    enum MessageAlignment: String, CaseIterable, Codable, Sendable { case left, center, right }
     /// swiftDialog's `--messageposition` values.
-    enum MessagePosition: String, CaseIterable, Sendable { case top, center, bottom }
+    enum MessagePosition: String, CaseIterable, Codable, Sendable { case top, center, bottom }
 
     /// swiftDialog's `--position` values.
-    enum DialogPosition: String, CaseIterable, Sendable {
+    enum DialogPosition: String, CaseIterable, Codable, Sendable {
         case topLeft = "topleft", top, topRight = "topright"
         case left, center, right
         case bottomLeft = "bottomleft", bottom, bottomRight = "bottomright"
@@ -95,7 +95,7 @@ struct RuleModel: Equatable, Hashable, Sendable {
         self.dialogMessagePosition = dialogMessagePosition
     }
 
-    enum Kind: Sendable {
+    enum Kind: String, Codable, Sendable {
         /// No predicate: polled every 0.5 s.
         case presence
         /// Predicate present: event-driven, driven by a unified-log line.

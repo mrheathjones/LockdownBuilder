@@ -43,11 +43,17 @@ enum ExportFormat {
 @MainActor
 @Observable
 final class ProjectStore {
-    var drafts: [RuleDraft] = []
-    var selection: SidebarItem? = .home
+    var drafts: [RuleDraft] = [] {
+        didSet { workspaceChanged() }
+    }
+    var selection: SidebarItem? = .home {
+        didSet { workspaceChanged() }
+    }
     /// The Settings tab being shown, shared by the ⌘, window and the sidebar's Settings item.
     var settingsTab: SettingsTab = .general
-    private(set) var folderURL: URL?
+    private(set) var folderURL: URL? {
+        didSet { workspaceChanged() }
+    }
     var settings: RuleSettings {
         didSet { persist() }
     }
@@ -59,21 +65,116 @@ final class ProjectStore {
     var isShowingJamfPublish = false
 
     /// What is on disk, per draft, for the unsaved-changes dot and for cleaning up renamed files.
-    private var savedRules: [UUID: RuleModel] = [:]
-    private var savedFileNames: [UUID: String] = [:]
+    private var savedRules: [UUID: RuleModel] = [:] {
+        didSet { workspaceChanged() }
+    }
+    private var savedFileNames: [UUID: String] = [:] {
+        didSet { workspaceChanged() }
+    }
 
     private static let settingsKey = "RuleSettings.v1"
     private let defaults: UserDefaults
     let history: ExportHistory
+    /// The app's own copy of the rules, folder and selection; see `Workspace`.
+    let workspace: WorkspaceFile
 
-    init(defaults: UserDefaults = .standard, history: ExportHistory = .standard) {
+    init(defaults: UserDefaults = .standard, history: ExportHistory = .standard, workspace: WorkspaceFile = .standard) {
         self.defaults = defaults
         self.history = history
+        self.workspace = workspace
         if let data = defaults.data(forKey: Self.settingsKey),
            let stored = try? JSONDecoder().decode(RuleSettings.self, from: data) {
             settings = stored
         } else {
             settings = RuleSettings()
+        }
+        restoreWorkspace()
+        // The coalesced save may still be pending when the user quits; write it out before the process ends.
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.flushWorkspace() }
+        }
+    }
+
+    // MARK: Workspace (the rules survive quitting, updating and reinstalling the app)
+
+    private var isRestoringWorkspace = false
+    private var workspaceNeedsSave = false
+    private var workspaceSaveTask: Task<Void, Never>?
+    private var reportedWorkspaceError = false
+
+    /// Puts the app back where it was left. A folder that no longer exists is forgotten, but its rules are kept
+    /// (as unsaved, so the next Save asks where to put them).
+    private func restoreWorkspace() {
+        guard let saved = workspace.load() else { return }
+        isRestoringWorkspace = true
+        defer { isRestoringWorkspace = false }
+        var isDirectory: ObjCBool = false
+        let folderExists = saved.folderPath.map {
+            FileManager.default.fileExists(atPath: $0, isDirectory: &isDirectory) && isDirectory.boolValue
+        } ?? false
+        var restored: [RuleDraft] = []
+        var newSaved: [UUID: RuleModel] = [:], newNames: [UUID: String] = [:]
+        for stored in saved.drafts {
+            var draft = RuleDraft(id: stored.id, rule: stored.rule, importNotes: stored.importNotes)
+            draft.mode = stored.mode
+            restored.append(draft)
+            if folderExists {
+                newSaved[stored.id] = stored.savedRule
+                newNames[stored.id] = stored.savedFileName
+            }
+        }
+        drafts = restored
+        savedRules = newSaved
+        savedFileNames = newNames
+        pendingDeletions = folderExists ? saved.pendingDeletions : []
+        folderURL = folderExists ? saved.folderPath.map { URL(fileURLWithPath: $0, isDirectory: true) } : nil
+        if let id = saved.selectedRuleID, restored.contains(where: { $0.id == id }) {
+            selection = .rule(id)
+        }
+    }
+
+    private var currentWorkspace: Workspace {
+        var out = Workspace()
+        out.folderPath = folderURL?.path
+        out.drafts = drafts.map {
+            Workspace.Draft(id: $0.id, rule: $0.rule, mode: $0.mode, importNotes: $0.importNotes,
+                            savedRule: savedRules[$0.id], savedFileName: savedFileNames[$0.id])
+        }
+        out.pendingDeletions = pendingDeletions
+        if case .rule(let id) = selection { out.selectedRuleID = id }
+        return out
+    }
+
+    /// Called from every property the workspace covers. Edits arrive per keystroke, so the write is coalesced.
+    private func workspaceChanged() {
+        guard !isRestoringWorkspace else { return }
+        workspaceNeedsSave = true
+        guard workspaceSaveTask == nil else { return }
+        workspaceSaveTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(300))
+            guard let self, !Task.isCancelled else { return }
+            self.workspaceSaveTask = nil
+            self.flushWorkspace()
+        }
+    }
+
+    /// Writes the workspace now, if anything changed since the last write.
+    func flushWorkspace() {
+        workspaceSaveTask?.cancel()
+        workspaceSaveTask = nil
+        guard workspaceNeedsSave else { return }
+        do {
+            try workspace.save(currentWorkspace)
+            workspaceNeedsSave = false
+        } catch {
+            // Said once: the rules are still here, but they won't come back after a relaunch until this is fixed.
+            if !reportedWorkspaceError {
+                reportedWorkspaceError = true
+                message = "Couldn't keep a copy of your rules in \(workspace.fileURL.deletingLastPathComponent().path): "
+                    + "\(error.localizedDescription)\nSave them to a folder (⌘S) so they aren't lost when the app quits."
+            }
         }
     }
 
@@ -130,6 +231,11 @@ final class ProjectStore {
 
     func isDirty(_ draft: RuleDraft) -> Bool { savedRules[draft.id] != draft.rule }
 
+    /// Names of the rules whose edits are not in the folder yet (every rule, when no folder is open).
+    var unsavedRuleNames: [String] {
+        drafts.filter(isDirty).map { $0.rule.name.isEmpty ? "(unnamed)" : $0.rule.name }
+    }
+
     /// A name that is safe to use in a file name. Anything else is never written to disk.
     private func hasSafeName(_ rule: RuleModel) -> Bool {
         !rule.validate().contains { $0.code == .nameNotKebabCase || $0.code == .nameEmpty }
@@ -164,11 +270,15 @@ final class ProjectStore {
         savedRules[id] = nil
     }
 
-    private var pendingDeletions: [String] = []
+    private var pendingDeletions: [String] = [] {
+        didSet { workspaceChanged() }
+    }
 
     // MARK: Project folder
 
     func openFolder() {
+        // Opening a folder replaces the working set; unsaved rules would be the only thing lost.
+        guard FileDialogs.confirmReplacingUnsavedRules(unsavedRuleNames, action: "Open Folder") else { return }
         guard let url = FileDialogs.chooseFolder(
             message: "Choose a folder of rule plists.", prompt: "Open", startingAt: startingFolder)
         else { return }

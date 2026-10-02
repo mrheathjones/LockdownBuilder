@@ -117,7 +117,7 @@ struct SidebarView: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
-                    .help(store.folderURL?.path ?? "Rules are saved to a folder of plists")
+                    .help(store.folderURL?.path ?? "Rules are kept between launches; Save (⌘S) writes them to a folder of plists")
                 Spacer(minLength: 4)
                 Button("Open…") { store.openFolder() }
                     .buttonStyle(.link)

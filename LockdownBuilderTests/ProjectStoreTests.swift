@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Testing
 @testable import LockdownBuilder
@@ -6,12 +7,24 @@ import Testing
 struct ProjectStoreTests {
     private let store: ProjectStore
     private let folder: URL
+    private let defaults: UserDefaults
+    /// Every store in a test gets its own workspace file, never the user's real one.
+    private let workspaceFile: WorkspaceFile
 
     init() throws {
         let suite = "ProjectStoreTests.\(UUID().uuidString)"
-        store = ProjectStore(defaults: try #require(UserDefaults(suiteName: suite)))
+        defaults = try #require(UserDefaults(suiteName: suite))
         folder = FileManager.default.temporaryDirectory.appendingPathComponent(suite, isDirectory: true)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        workspaceFile = WorkspaceFile(fileURL: FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(suite).workspace", isDirectory: true).appendingPathComponent("Workspace.json"))
+        store = ProjectStore(defaults: defaults, workspace: workspaceFile)
+    }
+
+    /// A store started from the same settings and workspace file, as if the app had been quit and reopened.
+    private func relaunch() -> ProjectStore {
+        store.flushWorkspace()
+        return ProjectStore(defaults: defaults, workspace: workspaceFile)
     }
 
     private func copySamples() throws {
@@ -24,10 +37,10 @@ struct ProjectStoreTests {
     @Test func presetsPersistWithTheSettingsAndManagePresetsOpensTheDialogTab() throws {
         let suite = "ProjectStoreTests.presets.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suite))
-        let first = ProjectStore(defaults: defaults)
+        let first = ProjectStore(defaults: defaults, workspace: workspaceFile)
         first.settings.dialogPresets.append(DialogPreset(name: "Mine", message: "# Hi {{appName}}"))
         first.settings.dialogPresets.removeAll { $0.id == DialogPreset.appBlocked.id }
-        let second = ProjectStore(defaults: defaults)
+        let second = ProjectStore(defaults: defaults, workspace: workspaceFile)
         #expect(second.settings.dialogPresets == first.settings.dialogPresets)
         #expect(second.settings.missingBuiltInPresets == [DialogPreset.appBlocked])
         #expect(second.settingsTab == .general)
@@ -120,9 +133,115 @@ struct ProjectStoreTests {
     @Test func settingsPersistPerDefaultsSuite() throws {
         let suite = "ProjectStoreTests.persist.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suite))
-        let first = ProjectStore(defaults: defaults)
+        let first = ProjectStore(defaults: defaults, workspace: workspaceFile)
         first.settings.orgPlistDomain = "com.acme"
-        #expect(ProjectStore(defaults: defaults).settings.orgPlistDomain == "com.acme")
+        #expect(ProjectStore(defaults: defaults, workspace: workspaceFile).settings.orgPlistDomain == "com.acme")
         defaults.removePersistentDomain(forName: suite)
+    }
+
+    // MARK: Workspace: rules survive quitting, updating and reinstalling the app
+
+    @Test func rulesComeBackAfterARelaunchWithTheirModeAndSelection() throws {
+        let id = store.newRule(from: TestSupport.validRule())
+        let index = try #require(store.drafts.firstIndex { $0.id == id })
+        store.drafts[index].mode = .event
+        store.drafts[index].rule.predicate = #"process == "X""#
+        store.newRule()
+        store.selection = .rule(id)
+
+        let relaunched = relaunch()
+        #expect(relaunched.drafts == store.drafts)
+        #expect(relaunched.drafts.map(\.mode) == [.event, .presence])
+        #expect(relaunched.selection == .rule(id))
+        #expect(relaunched.folderURL == nil)
+        // Nothing was saved to a folder, so everything still shows as unsaved.
+        #expect(relaunched.drafts.allSatisfy { relaunched.isDirty($0) })
+    }
+
+    @Test func theOpenFolderAndWhatIsSavedInItComeBackToo() throws {
+        try copySamples()
+        store.loadFolder(folder)
+        let index = try #require(store.drafts.firstIndex { $0.rule.name == "fm" })
+        store.drafts[index].rule.cooldownSeconds = 30
+
+        let relaunched = relaunch()
+        #expect(relaunched.folderURL?.path == folder.path)
+        #expect(relaunched.drafts == store.drafts)
+        #expect(relaunched.drafts.filter { relaunched.isDirty($0) }.map(\.rule.name) == ["fm"])
+        // Save goes straight to the remembered folder, no dialog.
+        relaunched.save()
+        #expect(relaunched.drafts.allSatisfy { !relaunched.isDirty($0) })
+        let data = try Data(contentsOf: folder.appendingPathComponent("com.company.restrict.fm.plist"))
+        #expect(String(decoding: data, as: UTF8.self) == RuleExport.plist(for: relaunched.drafts[index].rule))
+    }
+
+    @Test func aFolderThatIsGoneIsForgottenButItsRulesAreKept() throws {
+        try copySamples()
+        store.loadFolder(folder)
+        store.flushWorkspace()
+        try FileManager.default.removeItem(at: folder)
+
+        let relaunched = ProjectStore(defaults: defaults, workspace: workspaceFile)
+        #expect(relaunched.folderURL == nil)
+        #expect(relaunched.drafts == store.drafts)
+        #expect(relaunched.drafts.allSatisfy { relaunched.isDirty($0) })
+    }
+
+    @Test func unsavedRuleNamesListWhatOpeningAFolderWouldLose() throws {
+        #expect(store.unsavedRuleNames.isEmpty)
+        try copySamples()
+        store.loadFolder(folder)
+        #expect(store.unsavedRuleNames.isEmpty)
+        let index = try #require(store.drafts.firstIndex { $0.rule.name == "fm" })
+        store.drafts[index].rule.cooldownSeconds = 30
+        store.newRule(from: RuleModel(name: "", killProcess: "X", dialogMessage: "m"))
+        #expect(store.unsavedRuleNames == ["fm", "(unnamed)"])
+        store.save()
+        #expect(store.unsavedRuleNames == ["(unnamed)"])   // an invalid name is never written, so it stays unsaved
+    }
+
+    @Test func aDeletedRuleStaysDeletedAfterARelaunch() throws {
+        store.newRule(from: TestSupport.validRule())
+        let gone = store.newRule()
+        store.delete(id: gone)
+        let relaunched = relaunch()
+        #expect(relaunched.drafts.map(\.rule.name) == ["my-rule"])
+    }
+
+    @Test func editsAreWrittenOnTheirOwnShortlyAfterTheyHappen() async throws {
+        store.newRule()
+        #expect(workspaceFile.load() == nil)
+        try await Task.sleep(for: .seconds(1))
+        #expect(workspaceFile.load()?.drafts.map(\.rule.name) == ["new-rule"])
+    }
+
+    @Test func quittingWritesAPendingChangeStraightAway() throws {
+        store.newRule()
+        #expect(workspaceFile.load() == nil)
+        // Posted on the main thread to a main-queue observer, so it runs before `post` returns.
+        NotificationCenter.default.post(name: NSApplication.willTerminateNotification, object: nil)
+        #expect(workspaceFile.load()?.drafts.map(\.rule.name) == ["new-rule"])
+    }
+
+    @Test func anUnreadableWorkspaceFileStartsEmptyRatherThanCrashing() throws {
+        try FileManager.default.createDirectory(
+            at: workspaceFile.fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("not json".utf8).write(to: workspaceFile.fileURL)
+        let relaunched = ProjectStore(defaults: defaults, workspace: workspaceFile)
+        #expect(relaunched.drafts.isEmpty)
+        #expect(relaunched.selection == .home)
+        #expect(relaunched.message == nil)
+    }
+
+    @Test func theWorkspaceFileToleratesMissingKeys() throws {
+        let json = #"{"drafts":[{"id":"0B4E7C3A-1F7E-4C7E-9F0B-2C4B9D1E8A11","rule":{"name":"a","dialogMessage":"m"},"mode":"event"}]}"#
+        let workspace = try JSONDecoder().decode(Workspace.self, from: Data(json.utf8))
+        #expect(workspace.version == Workspace.currentVersion)
+        #expect(workspace.folderPath == nil)
+        #expect(workspace.selectedRuleID == nil)
+        #expect(workspace.drafts.count == 1)
+        #expect(workspace.drafts[0].mode == .event)
+        #expect(workspace.drafts[0].importNotes.isEmpty)
+        #expect(workspace.drafts[0].rule == RuleModel(name: "a", dialogMessage: "m"))
     }
 }

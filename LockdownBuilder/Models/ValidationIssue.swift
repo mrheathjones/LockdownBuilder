@@ -1,7 +1,7 @@
 import Foundation
 
 /// The rule keys (plus the rule's file-level name) that a validation issue can point at.
-enum RuleField: String, Sendable, CaseIterable {
+enum RuleField: String, Codable, Sendable, CaseIterable {
     case name = "Name"
     case killProcess = "KillProcess"
     case dialogMessage = "DialogMessage"
@@ -26,13 +26,13 @@ enum RuleField: String, Sendable, CaseIterable {
     case file = "File"
 }
 
-enum ValidationSeverity: Sendable {
+enum ValidationSeverity: String, Codable, Sendable {
     case error
     case warning
 }
 
 /// Stable identifiers so tests (and the UI) can match on the kind of problem, not on message text.
-enum ValidationCode: String, Sendable {
+enum ValidationCode: String, Codable, Sendable {
     // Name
     case nameEmpty, nameNotKebabCase, nameReserved, nameCollision
     // Required keys / wrong values
@@ -47,7 +47,7 @@ enum ValidationCode: String, Sendable {
     case plistUnreadable
 }
 
-struct ValidationIssue: Equatable, Hashable, Sendable, Identifiable {
+struct ValidationIssue: Equatable, Hashable, Codable, Sendable, Identifiable {
     let field: RuleField
     let severity: ValidationSeverity
     let code: ValidationCode

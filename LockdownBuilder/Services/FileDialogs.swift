@@ -45,6 +45,24 @@ enum FileDialogs {
         return alert.runModal() == .alertFirstButtonReturn
     }
 
+    /// Returns true if the user agrees to replace the current rules although `unsavedNames` have unsaved changes.
+    /// Cancel is the default; the replacing button is marked destructive.
+    static func confirmReplacingUnsavedRules(_ unsavedNames: [String], action: String) -> Bool {
+        guard !unsavedNames.isEmpty else { return true }
+        let alert = NSAlert()
+        let count = unsavedNames.count
+        alert.messageText = "Replace the current rules?"
+        alert.informativeText = "\(action) replaces the rules in the sidebar, and \(count == 1 ? "1 rule has" : "\(count) rules have") "
+            + "unsaved changes:\n" + unsavedNames.prefix(8).joined(separator: "\n")
+            + (count > 8 ? "\n…and \(count - 8) more" : "")
+            + "\n\nSave (⌘S) first to keep them."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Cancel")
+        let replace = alert.addButton(withTitle: action)
+        replace.hasDestructiveAction = true
+        return alert.runModal() == .alertSecondButtonReturn
+    }
+
     static func copyToClipboard(_ text: String) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)

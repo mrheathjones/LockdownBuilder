@@ -9,8 +9,9 @@ quitting them, but tells the user why in a prompt you design: your wording, your
 can take them somewhere useful such as Self Service. It can also act on a single action inside an app (for example
 opening one System Settings pane) rather than only on the whole app.
 
-> **Status:** version 1.3.1. Rule editor, validation, exports, dialog designer with editable message presets, test
-> harness, target picker, predicate discovery, Jamf Pro publishing, and optional on-device Apple Intelligence help.
+> **Status:** version 1.4. Rule editor, validation, exports, dialog designer with editable message presets, test
+> harness, target picker, predicate discovery, Jamf Pro publishing, optional on-device Apple Intelligence help, and
+> rules that stay put between launches and updates.
 
 ## Download
 
@@ -22,7 +23,7 @@ has not been through Apple's notary service, so macOS will refuse to open it on 
 (Control-click) the package and choose **Open**, or install it from the Terminal:
 
 ```bash
-sudo installer -pkg ~/Downloads/LockdownBuilder-1.3.1-unsigned.pkg -target /
+sudo installer -pkg ~/Downloads/LockdownBuilder-1.4-unsigned.pkg -target /
 ```
 
 If you'd rather not run an un-notarised package, build from source (see [Build](#build)).
@@ -36,7 +37,17 @@ If you'd rather not run an un-notarised package, build from source (see [Build](
 | ![Home: start a rule from scratch, a folder, or a template](Screenshots/home.png) | ![The usb-block template page with its notes and the values it carries](Screenshots/template-usb-block.png) |
 | ![Dialog options: message with a {{companyName}} variable, buttons, and the More Information button](Screenshots/dialog-options.png) | ![The generated .mobileconfig, ready to export or publish to Jamf Pro](Screenshots/mobileconfig-preview.png) |
 | ![Settings → Dialog: the message presets with Edit, Duplicate and Remove, New Preset and Restore Built-in Presets](Screenshots/settings-dialog-presets.png) | ![The preset editor: name, title and message with {{appName}}, the styling toolbar and a preview](Screenshots/preset-editor.png) |
-| ![Settings: build the watcher installer and upload it to Jamf Pro](Screenshots/settings-watcher.png) | |
+| ![Settings: build the watcher installer and upload it to Jamf Pro](Screenshots/settings-watcher.png) | ![Open Folder with unsaved rules: the alert names the rules that would be lost, with Cancel as the default](Screenshots/open-folder-unsaved.png) |
+
+## What's new in 1.4
+
+- **Your rules survive quitting, updating and reinstalling the app.** Until now the rules only existed in memory
+  and in the folder you saved them to, so a relaunch started empty unless you opened that folder again. The app now
+  keeps its own copy of every rule, the open folder and the current selection in
+  `~/Library/Application Support/com.herojoneslabs.LockdownBuilder/Workspace.json`, written as you edit and again
+  when the app quits, and restores it at launch. Nothing changes in the rule files, the folder or the watcher.
+- **Open Folder warns before discarding unsaved rules.** Opening a folder replaces the rules in the sidebar; if any
+  of them have unsaved changes, an alert names them and Cancel is the default.
 
 ## What's new in 1.3
 
@@ -48,21 +59,6 @@ If you'd rather not run an un-notarised package, build from source (see [Build](
   unchanged.
 - **1.3.1:** the preset editor sheet grows with the window, so the preview is visible without scrolling in the main
   window while it still fits the Settings window.
-
-## What's new in 1.2
-
-- **Notify Only rules.** A rule with a `Predicate` and no `KillProcess` shows the dialog when the log line appears and
-  quits nothing. Use it to explain something that is enforced elsewhere.
-- **usb-block template.** A notify-only rule that tells the user why an external drive did not mount under a DDM
-  Disk Management *Disallowed* policy. It enforces nothing; scope it only to the group with that policy.
-- **Message variables.** `{{companyName}}`, `{{ruleName}}` and `{{killProcess}}` in the title or message are filled
-  in by the watcher when the dialog is shown. The built-in templates and presets use `{{companyName}}`.
-- **More Information button.** `InfoButtonAction` adds a button at the bottom left that closes the dialog and opens a
-  local file, an app or a web page; `InfoButtonText` sets its label.
-- **Watcher 1.10 / installer 1.9.** Notify-only rules need watcher 1.9 or later; variables and the info button need
-  1.10 or later. The editor says which version a rule needs.
-- The JSON schema requires only `DialogMessage`; the app and the watcher enforce "KillProcess or Predicate".
-- First release with an installer package (see [Download](#download)).
 
 Earlier releases: [1.2](https://github.com/mrheathjones/LockdownBuilder/releases/tag/v1.2) (notify-only rules, message
 variables, More Information button, first installer package),
@@ -90,6 +86,12 @@ dialog designer, Publish to Jamf Pro, bundled watcher installer),
    preference domain = the file name without `.plist`. Optionally upload `restricted-item-rule.schema.json` as the
    custom schema. Or skip the upload: **Export → Publish to Jamf Pro…** (⇧⌘P) sends the `.mobileconfig` straight to
    your server (see below).
+
+**Your rules stay put.** LockdownBuilder keeps its own copy of every rule, the open folder and the current selection
+in `~/Library/Application Support/com.herojoneslabs.LockdownBuilder/Workspace.json`, written as you edit, so quitting,
+updating or reinstalling the app never loses a rule. **Save (⌘S)** still writes the rule plists to a folder of your
+choice: that folder is the copy to share, version or deploy. If the folder is later moved or deleted, the rules are
+kept and the next Save asks where to put them.
 
 ## The watcher installer
 
@@ -230,7 +232,7 @@ TEST_RUNNER_UPDATE_SAMPLES=1 xcodebuild -project LockdownBuilder.xcodeproj -sche
 | ⌘N | New rule |
 | ⌘O | Open a folder of rule plists |
 | ⇧⌘I | Import (and validate) plists |
-| ⌘S | Save all rules to the folder |
+| ⌘S | Save all rules to the folder (the app also keeps its own copy automatically) |
 | ⌘E / ⇧⌘E | Export the selected rule as .plist / .mobileconfig |
 | ⌘T | Test the selected rule (dry run, simulate dialog, live kill test) |
 
