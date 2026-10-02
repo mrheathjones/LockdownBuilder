@@ -164,6 +164,7 @@ extension BuiltInTemplate.Tint {
         case .orange: .orange
         case .green: .green
         case .gray: .gray
+        case .red: .red
         }
     }
 }
@@ -174,6 +175,7 @@ extension RuleModel.Kind {
         case .presence: "Presence"
         case .event: "Event"
         case .watchOneKillAnother: "Watch & Kill"
+        case .notifyOnly: "Notify Only"
         }
     }
 }
@@ -197,6 +199,8 @@ extension RuleModel.DialogPosition {
 extension RuleModel {
     /// "Presence · App Store": the second line of a sidebar row or template card.
     func summaryLine(kind: Kind? = nil) -> String {
-        "\((kind ?? self.kind).label) · \(killProcess.isEmpty ? "no process yet" : killProcess)"
+        let kind = kind ?? self.kind
+        if kind == .notifyOnly { return "\(kind.label) · nothing is quit" }
+        return "\(kind.label) · \(killProcess ?? "no process yet")"
     }
 }

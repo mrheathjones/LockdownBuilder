@@ -32,8 +32,10 @@ opening one System Settings pane) rather than only on the whole app.
      → **Start Action** → do it once → **Stop**. Click **Test** on the top candidate, repeat the action, and when it
      fires, **Use** it.
    - *Watch & Kill* to watch an extension and kill its host.
+   - *Notify Only* to show the dialog on a log line and quit nothing (no KillProcess; needs watcher 1.9 or later).
 4. **Dialog**: enter a title and message (pick a preset, or **Draft…** with Apple Intelligence), style the text with the
-   toolbar, and set the window's size, position and alignment. The preview follows every edit; **Simulate Dialog**
+   toolbar, insert variables such as `{{companyName}}` from the `{}` menu, add a **More Information** button that opens
+   a local file or a web page, and set the window's size, position and alignment. The preview follows every edit; **Simulate Dialog**
    opens the real swiftDialog window with the watcher's flags.
 5. **⌘E** to export the plist (or `.mobileconfig`), then upload it in Jamf: *Application & Custom Settings → Upload*,
    preference domain = the file name without `.plist`. Optionally upload `restricted-item-rule.schema.json` as the
@@ -51,7 +53,9 @@ icon and icon size. In **Settings → Watcher**:
   to a policy to deploy; parameter 4 is `install` (default) or `uninstall`.
 
 The banner and icon paths are paths on the managed Macs, so deploy those files there. Watcher 1.8 or later is needed
-for the `Dialog*` keys.
+for the `Dialog*` keys, watcher 1.9 or later for notify-only rules (rules without `KillProcess`; older watchers skip
+such a rule as invalid and log it), and watcher 1.10 or later for message variables and the `InfoButton*` keys (older
+watchers show `{{…}}` as typed and have no info button). The editor says which version a rule needs.
 
 ## Publish to Jamf Pro (optional)
 
@@ -85,14 +89,16 @@ One plist per rule, named `<ORG_PLIST_DOMAIN>.<PREFERENCE>.<rule-name>.plist` (e
 
 | Key | Type | Required | Notes |
 |---|---|---|---|
-| `KillProcess` | string | yes | Exact process name (`pgrep -x` / `pkill -x`); may contain spaces |
-| `DialogMessage` | string | yes | swiftDialog Markdown; start with `# Title` |
-| `Predicate` | string | no | Unified-log predicate. Present = event rule; absent = presence rule (polled every 0.5 s) |
+| `KillProcess` | string | yes, unless `Predicate` is set | Exact process name (`pgrep -x` / `pkill -x`); may contain spaces. An event rule without it is notify-only: the dialog is shown and nothing is killed (watcher 1.9+) |
+| `DialogMessage` | string | yes | swiftDialog Markdown; start with `# Title`. May use the variables below |
+| `Predicate` | string | no | Unified-log predicate. Present = event rule; absent = presence rule (polled every 0.5 s), which needs `KillProcess` |
 | `WatchProcess` | string | no | Presence rules only; invalid together with `Predicate` |
 | `CooldownSeconds` | integer ≥ 0 | no | Default 5; rate-limits the dialog only |
 | `ButtonText` | string | no | Primary button label, default `OK` |
 | `ButtonAction` | string | no | Absolute path or `scheme://…` URL; `file://` and control characters refused |
 | `DismissButtonText` | string | no | Adds a secondary button that only closes the dialog |
+| `InfoButtonAction` | string | no | Adds a “More Information” button (bottom left). Pressing it closes the dialog and opens this: an absolute path (a local file or app) or `scheme://…` URL, same rules as `ButtonAction` |
+| `InfoButtonText` | string | no | Label for that button, default `More Information`; invalid without `InfoButtonAction` |
 | `DialogWidth`, `DialogHeight` | integer | no | Dialog size in points (200 or more). Absent: swiftDialog's width, and a height of 500 |
 | `DialogPosition` | string | no | `topleft`, `top`, `topright`, `left`, `center`, `right`, `bottomleft`, `bottom`, `bottomright`. Absent: centred |
 | `DialogOnTop` | boolean | no | Keep the dialog above other windows. Absent: true |
@@ -105,6 +111,19 @@ One plist per rule, named `<ORG_PLIST_DOMAIN>.<PREFERENCE>.<rule-name>.plist` (e
 
 Rule names are lowercase kebab-case (`^[a-z0-9]+(-[a-z0-9]+)*$`); `watcher` is reserved. `KillProcess` may never be
 `launchd`, `kernel_task`, `loginwindow`, `WindowServer`, `bash`, `log`, `dialog` or `Restricted-Item-Watcher.sh`.
+
+**Message variables.** The watcher (1.10+) replaces these in `DialogMessage` when it shows the dialog, so the plist
+keeps the token and a renamed company needs no rule changes: `{{companyName}}` (the name the watcher was installed
+with), `{{ruleName}}`, `{{killProcess}}` (empty for a notify-only rule). Unknown `{{…}}` tokens are left as typed (the
+editor warns), and swiftDialog's own `{computername}`-style variables pass through. The built-in templates and the
+message presets use `{{companyName}}`.
+
+A rule needs `KillProcess`, `Predicate` or both. The JSON schema only requires `DialogMessage` (it does not express
+"one of the two"); the app and the watcher enforce the rest.
+
+The built-in `usb-block` template is a notify-only rule: it explains why an external drive did not mount when a DDM
+Disk Management policy disallows external storage. It enforces nothing. Scope it only to Macs with that policy; the
+template's notes in the app give the details.
 
 `Samples/` holds the built-in templates exactly as the app exports them, plus the draft-04 JSON schema for Jamf's custom
 schema field. They double as golden files for the tests.
@@ -149,9 +168,11 @@ TEST_RUNNER_UPDATE_SAMPLES=1 xcodebuild -project LockdownBuilder.xcodeproj -sche
 **Test (⌘T)** never changes anything unless you ask it to:
 
 - **Dry run** explains what the watcher will do and shows whether a matching process is running now (`pgrep -x`).
+  For a notify-only rule it says the dialog is shown and nothing is killed.
 - **Simulate dialog** launches `/usr/local/bin/dialog` with exactly the flags the watcher uses. Nothing is killed and
   `ButtonAction` is reported, not opened.
 - **Live kill test** (optional, clearly labelled) runs `pkill -x` only after you type the process name exactly.
+  It is disabled for rules without `KillProcess`.
 
 ## Why it is not sandboxed
 

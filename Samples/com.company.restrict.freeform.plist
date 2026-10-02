@@ -7,7 +7,7 @@
 
 Freeform isn't available on this Mac.
 
-This is a policy of Company Name. If you believe you need access, please contact the Service Desk.</string>
+This is a policy of {{companyName}}. If you believe you need access, please contact the Service Desk.</string>
 	<key>KillProcess</key>
 	<string>Freeform</string>
 </dict>

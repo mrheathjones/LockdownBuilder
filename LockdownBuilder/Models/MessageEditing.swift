@@ -71,6 +71,13 @@ enum MarkdownStyling {
         return (String(newText), lower..<newText.index(lower, offsetBy: changed.count))
     }
 
+    /// Replaces the selection with `snippet` (e.g. a `{{companyName}}` variable) and puts the cursor after it.
+    static func insert(_ snippet: String, in text: String, range: Range<String.Index>) -> Edit {
+        let newText = text[..<range.lowerBound] + snippet + text[range.upperBound...]
+        let end = newText.index(newText.startIndex, offsetBy: text.distance(from: text.startIndex, to: range.lowerBound) + snippet.count)
+        return (String(newText), end..<end)
+    }
+
     /// Turns the selection into `[selection](https://)` and selects the address so it can be typed over.
     static func link(in text: String, range: Range<String.Index>) -> Edit {
         let label = text[range].isEmpty ? "link text" : String(text[range])

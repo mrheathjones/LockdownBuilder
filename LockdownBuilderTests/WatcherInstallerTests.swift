@@ -102,7 +102,30 @@ struct WatcherInstallerTests {
     }
 
     @Test func readsTheInstallerVersion() {
-        #expect(WatcherInstaller.version(of: template) == "1.7")
+        #expect(WatcherInstaller.version(of: template) == "1.9")
+    }
+
+    /// The editor's "needs watcher X or later" notes must never ask for more than the app bundles.
+    @Test func theEmbeddedWatcherIsNewEnoughForEveryFeatureTheAppWrites() throws {
+        let watcher = try #require(template.range(of: "WATCHER_SCRIPT_EOF")).upperBound
+        let version = try #require(template[watcher...].firstMatch(of: /readonly SCRIPT_VERSION="([0-9.]+)"/)).1
+        #expect(version == "1.10")
+        for minimum in [RuleModel.notifyOnlyMinimumWatcherVersion, RuleModel.variablesAndInfoButtonMinimumWatcherVersion] {
+            #expect(RuleModel.isVersion(String(version), atLeast: minimum), "\(minimum)")
+        }
+        #expect(template.contains(#"(has("KillProcess") or (.Predicate | type == "string" and length > 0))"#))
+        for variable in MessageVariable.allCases {
+            #expect(template.contains("'\(variable.token)'"), "watcher doesn't expand \(variable.token)")
+        }
+        #expect(template.contains("--infobuttontext") && template.contains("\"InfoButtonAction\"") && template.contains("\"InfoButtonText\""))
+        #expect(template.contains("DEFAULT_INFO_BUTTON_TEXT=\"\(RuleModel.defaultInfoButtonText)\""))
+        #expect(!template.contains("--info ") && !template.contains("--debug"))
+    }
+
+    @Test func versionComparisonIsNumericNotLexical() {
+        #expect(RuleModel.isVersion("1.10", atLeast: "1.9"))
+        #expect(!RuleModel.isVersion("1.9", atLeast: "1.10"))
+        #expect(RuleModel.isVersion("2.0", atLeast: "1.10") && RuleModel.isVersion("1.9", atLeast: "1.9"))
     }
 
     /// The embedded watcher and the app must agree on the rule keys.
@@ -237,8 +260,11 @@ struct MessageAlignmentTests {
     /// The exact command the watcher runs for a plain rule and for a fully branded one.
     @Test func theCommandMatchesTheWatcherFlagForFlag() {
         var rule = BuiltInTemplates.appStore.rule(settings: RuleSettings())
+        // The message goes to swiftDialog with its variables filled in, as the watcher does.
+        let message = rule.dialogMessage.replacingOccurrences(of: "{{companyName}}", with: "Company Name")
+        #expect(message != rule.dialogMessage && !message.contains("{{"))
         #expect(DialogCommand.arguments(for: rule, settings: RuleSettings()) == [
-            "--height", "500", "--message", rule.dialogMessage, "--button1text", "Self Service",
+            "--height", "500", "--message", message, "--button1text", "Self Service",
             "--icon", "SF=exclamationmark.shield.fill,colour=red", "--ontop", "--moveable",
             "--button2text", "Done", "--title", "Company Name",
         ])
@@ -246,7 +272,7 @@ struct MessageAlignmentTests {
         rule.dialogWidth = 640; rule.dialogHeight = 300; rule.dialogMessageAlignment = .center; rule.dialogMessagePosition = .top
         // Same input as the watcher harness run on 2026-10-02; this is its output.
         #expect(DialogCommand.arguments(for: rule, settings: s) == [
-            "--height", "300", "--message", rule.dialogMessage, "--button1text", "Self Service", "--width", "640",
+            "--height", "300", "--message", message, "--button1text", "Self Service", "--width", "640",
             "--messagealignment", "center", "--messageposition", "top", "--icon", "/i.png", "--iconsize", "90",
             "--ontop", "--moveable", "--button2text", "Done", "--bannerimage", "/b.png", "--title", "none", "--bannerheight", "100",
         ])

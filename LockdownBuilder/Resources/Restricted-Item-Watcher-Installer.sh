@@ -8,7 +8,9 @@
 # Date: 10-01-2026
 # Modified: 10-02-2026
 # Purpose: Jamf script payload. Writes the Restricted-Item-Watcher script and its LaunchDaemon plist via heredoc, then (re)loads the daemon. Parameter 4 = install (default) | uninstall.
-# Version: 1.7 - Embedded watcher v1.8; new deployment values BANNER_HEIGHT, DIALOG_ICON and DIALOG_ICON_SIZE; BANNER_IMAGE may be empty
+# Version: 1.9 - Embedded watcher v1.10 (DialogMessage variables; InfoButtonText/InfoButtonAction rule keys)
+# 1.8 - Embedded watcher v1.9 (notify-only event rules: Predicate without KillProcess)
+# 1.7 - Embedded watcher v1.8; new deployment values BANNER_HEIGHT, DIALOG_ICON and DIALOG_ICON_SIZE; BANNER_IMAGE may be empty
 # 1.6 - Embedded watcher v1.7 (optional Dialog* rule keys)
 # 1.5 - Embedded watcher v1.6 (faster kill/dialog path)
 # 1.4 - Embedded watcher v1.5 (WatchProcess rule key)
@@ -69,7 +71,7 @@ readonly ORG_PLIST_DOMAIN="com.company"
 # Script metadata (constant name: Jamf stages payload scripts under random temp names)
 readonly PROJECT_NAME="Restricted-Item-Watcher"
 readonly SCRIPT_NAME="${PROJECT_NAME}-Installer.sh"
-readonly SCRIPT_VERSION="1.7"
+readonly SCRIPT_VERSION="1.9"
 readonly LOG_LABEL="${ORG_PLIST_DOMAIN}.${PROJECT_NAME}.installer"
 readonly TIMESTAMP=$("${DATE}" +%Y%m%d_%H%M%S)
 readonly JAMF_LOG="/var/log/jamf.log"
@@ -236,7 +238,7 @@ validate_config() {
     fi
     if [[ ! -x "/usr/local/bin/dialog" ]]
     then
-        log_warn "swiftDialog not found at /usr/local/bin/dialog; kills will still happen but no dialogs"
+        log_warn "swiftDialog not found at /usr/local/bin/dialog; kills will still happen but no dialogs (notify-only rules will do nothing)"
     fi
 }
 
@@ -259,8 +261,10 @@ write_watcher_script() {
 # Author: LockdownBuilder
 # Date: 10-01-2026
 # Modified: 10-02-2026
-# Purpose: Rule-driven restricted item watcher (deployed by Restricted-Item-Watcher-Installer.sh via heredoc). Reads one managed preference domain per rule, kills the named process on a log event (Predicate) or on presence, shows a swiftDialog message, and records attempts/kills to per-rule tracking plists for an Extension Attribute.
-# Version: 1.8 - Dialog icon, icon size and banner height are deployment values; added DialogMessageAlignment and DialogMessagePosition rule keys; no banner configured is no longer a warning
+# Purpose: Rule-driven restricted item watcher (deployed by Restricted-Item-Watcher-Installer.sh via heredoc). Reads one managed preference domain per rule, kills the named process on a log event (Predicate) or on presence, shows a swiftDialog message, and records attempts/kills to per-rule tracking plists for an Extension Attribute. A rule with a Predicate and no KillProcess is notify-only: it shows the message and kills nothing.
+# Version: 1.10 - DialogMessage variables {{companyName}}, {{ruleName}}, {{killProcess}} are replaced when the dialog is shown; optional InfoButtonAction / InfoButtonText rule keys ("More Information" button that opens a local path or URL)
+# 1.9 - KillProcess is optional for rules with a Predicate (notify-only: dialog on the log event, nothing is killed)
+# 1.8 - Dialog icon, icon size and banner height are deployment values; added DialogMessageAlignment and DialogMessagePosition rule keys; no banner configured is no longer a warning
 # 1.7 - Added optional dialog rule keys: DialogWidth, DialogHeight, DialogPosition, DialogOnTop, DialogMoveable, DialogBlurScreen, DialogShowBanner, DialogShowIcon
 # 1.6 - Faster response: kill before bookkeeping, dialog before SIGKILL escalation, 0.5 s presence poll
 # 1.5 - Added optional WatchProcess rule key (presence rules can watch one process and kill another)
@@ -333,7 +337,7 @@ readonly ORG_PLIST_DOMAIN="__ORG_PLIST_DOMAIN__"
 # random temp names; the installed copy and every log line must use one stable name.
 readonly PROJECT_NAME="Restricted-Item-Watcher"
 readonly SCRIPT_NAME="${PROJECT_NAME}.sh"
-readonly SCRIPT_VERSION="1.8"
+readonly SCRIPT_VERSION="1.10"
 readonly LOG_LABEL="${ORG_PLIST_DOMAIN}.${PROJECT_NAME}"
 readonly TIMESTAMP=$("${DATE}" +%Y%m%d_%H%M%S)
 readonly JAMF_LOG="/var/log/jamf.log"
@@ -392,24 +396,36 @@ readonly RESERVED_RULE_NAME="watcher"
 # "bash" and the script name cover this watcher itself; "log" covers our own streams.
 declare -a KILL_DENYLIST=("launchd" "kernel_task" "loginwindow" "WindowServer" "bash" "log" "dialog" "${SCRIPT_NAME}")
 
-# jq filter: a rule must pass this or it is skipped (wrong/missing types never crash the daemon)
+# jq filter: a rule must pass this or it is skipped (wrong/missing types never crash the daemon).
+# KillProcess may be absent only when the rule has a non-empty Predicate (notify-only rule).
 readonly RULE_VALIDATE_FILTER='type == "object"
-    and (.KillProcess | type == "string" and length > 0)
+    and ((has("KillProcess") | not) or (.KillProcess | type == "string" and length > 0))
+    and (has("KillProcess") or (.Predicate | type == "string" and length > 0))
     and (.DialogMessage | type == "string" and length > 0)
     and ((has("Predicate") | not) or (.Predicate | type == "string"))
     and ((has("ButtonText") | not) or (.ButtonText | type == "string" and length > 0))
     and ((has("ButtonAction") | not) or (.ButtonAction | type == "string" and length > 0))
     and ((has("WatchProcess") | not) or (.WatchProcess | type == "string" and length > 0))
     and ((has("DismissButtonText") | not) or (.DismissButtonText | type == "string" and length > 0))
+    and ((has("InfoButtonText") | not) or (.InfoButtonText | type == "string" and length > 0))
+    and ((has("InfoButtonAction") | not) or (.InfoButtonAction | type == "string" and length > 0))
     and ((has("CooldownSeconds") | not) or (.CooldownSeconds | type == "number" and . >= 0 and . == floor))'
 
-# ButtonAction must be an absolute path (e.g. /Applications/Self Service.app) or a URL with a scheme
-# (e.g. jamfselfservice://content). file:// is refused. It is only ever passed to `open --` as ONE argument.
+# ButtonAction and InfoButtonAction must be an absolute path (e.g. /Applications/Self Service.app) or a URL
+# with a scheme (e.g. jamfselfservice://content). file:// is refused. They are only ever passed to `open --`
+# as ONE argument.
 readonly ACTION_REGEX='^(/[^[:cntrl:]]+|[A-Za-z][A-Za-z0-9+.-]*://[^[:cntrl:]]+)$'
 readonly DEFAULT_BUTTON_TEXT="OK"
+# swiftDialog's own label for the info button; InfoButtonText overrides it. The button only exists when the
+# rule has an InfoButtonAction. swiftDialog exits 3 when it is pressed and this script opens the action.
+readonly DEFAULT_INFO_BUTTON_TEXT="More Information"
+
+# DialogMessage variables, replaced when the dialog is shown (the plist keeps the token):
+#   {{companyName}} -> ORG_NAME_FRIENDLY, {{ruleName}} -> the rule name, {{killProcess}} -> KillProcess ("" for
+#   notify-only rules). Unknown {{...}} tokens are left as typed. swiftDialog's own {single-brace} variables pass through.
 
 # Optional dialog window keys. They only change how the dialog looks, so a wrong value is ignored
-# with a warning (the default is used) and the rule still loads and still kills.
+# with a warning (the default is used) and the rule still loads and still acts.
 readonly DIALOG_MIN_SIZE=200        # smallest DialogWidth / DialogHeight accepted (points)
 readonly DIALOG_ALIGNMENT_REGEX='^(left|center|right)$'
 readonly DIALOG_MESSAGE_POSITION_REGEX='^(top|center|bottom)$'
@@ -450,6 +466,8 @@ declare -a RULE_COOLDOWNS=()
 declare -a RULE_BUTTON_TEXTS=()
 declare -a RULE_BUTTON_ACTIONS=()
 declare -a RULE_DISMISS_TEXTS=()
+declare -a RULE_INFO_TEXTS=()
+declare -a RULE_INFO_ACTIONS=()
 declare -a RULE_WATCHES=()
 # Dialog window options, one entry per rule; an empty entry means "use the default".
 declare -a RULE_DIALOG_WIDTHS=()
@@ -470,6 +488,7 @@ CONSOLE_USER=""
 CONSOLE_UID=""
 KILL_RESULT=""
 DIALOG_KEY_VALUE=""
+EXPANDED_MESSAGE=""
 MODE=""
 
 ##################################
@@ -621,7 +640,7 @@ validate_config() {
 
     if [[ ! -x "${DIALOG_BIN}" ]]
     then
-        log_warn "swiftDialog not found at ${DIALOG_BIN}; rules will still kill but no dialogs will show"
+        log_warn "swiftDialog not found at ${DIALOG_BIN}; rules will still kill but no dialogs will show (notify-only rules will do nothing)"
     fi
 }
 
@@ -707,7 +726,7 @@ read_dialog_key() {
 
 load_rules() {
     local plist_file rule_name json kill_name predicate message cooldown denied rule_type
-    local denied_hit button_text button_action dismiss_text watch_name
+    local denied_hit button_text button_action dismiss_text info_text info_action watch_name
     local dialog_width dialog_height dialog_position dialog_ontop dialog_moveable dialog_blur
     local dialog_banner dialog_icon dialog_alignment dialog_message_position
 
@@ -719,6 +738,8 @@ load_rules() {
     RULE_BUTTON_TEXTS=()
     RULE_BUTTON_ACTIONS=()
     RULE_DISMISS_TEXTS=()
+    RULE_INFO_TEXTS=()
+    RULE_INFO_ACTIONS=()
     RULE_WATCHES=()
     RULE_DIALOG_WIDTHS=()
     RULE_DIALOG_HEIGHTS=()
@@ -757,11 +778,12 @@ load_rules() {
 
         if ! "${JQ}" -e "${RULE_VALIDATE_FILTER}" <<< "${json}" >/dev/null 2>&1
         then
-            log_warn "Rule '${rule_name}' skipped: missing/invalid KillProcess, DialogMessage, Predicate or CooldownSeconds"
+            log_warn "Rule '${rule_name}' skipped: missing/invalid KillProcess, DialogMessage, Predicate or CooldownSeconds (KillProcess may be left out only when the rule has a Predicate)"
             continue
         fi
 
-        kill_name=$("${JQ}" -r '.KillProcess' <<< "${json}")
+        # Empty kill_name = notify-only rule (the filter above guarantees it has a Predicate).
+        kill_name=$("${JQ}" -r '.KillProcess // ""' <<< "${json}")
         predicate=$("${JQ}" -r '.Predicate // ""' <<< "${json}")
         message=$("${JQ}" -r '.DialogMessage' <<< "${json}")
         # shellcheck disable=SC2016 # $d is a jq variable, not a shell expansion
@@ -771,6 +793,9 @@ load_rules() {
         button_text=$("${JQ}" -r --arg d "${DEFAULT_BUTTON_TEXT}" '.ButtonText // $d' <<< "${json}")
         button_action=$("${JQ}" -r '.ButtonAction // ""' <<< "${json}")
         dismiss_text=$("${JQ}" -r '.DismissButtonText // ""' <<< "${json}")
+        info_action=$("${JQ}" -r '.InfoButtonAction // ""' <<< "${json}")
+        # shellcheck disable=SC2016 # $d is a jq variable, not a shell expansion
+        info_text=$("${JQ}" -r --arg d "${DEFAULT_INFO_BUTTON_TEXT}" '.InfoButtonText // $d' <<< "${json}")
         watch_name=$("${JQ}" -r '.WatchProcess // ""' <<< "${json}")
 
         if [[ -n "${watch_name}" && -n "${predicate}" ]]
@@ -792,6 +817,19 @@ load_rules() {
             fi
         fi
 
+        if [[ -n "${info_action}" ]]
+        then
+            if ! [[ "${info_action}" =~ ${ACTION_REGEX} ]] || [[ "${info_action}" == [Ff][Ii][Ll][Ee]:* ]]
+            then
+                log_warn "Rule '${rule_name}' skipped: InfoButtonAction must be an absolute path or a non-file URL"
+                continue
+            fi
+        elif [[ -n "$("${JQ}" -r '.InfoButtonText // ""' <<< "${json}")" ]]
+        then
+            log_warn "Rule '${rule_name}' skipped: InfoButtonText needs an InfoButtonAction to open"
+            continue
+        fi
+
         denied_hit="false"
         for denied in "${KILL_DENYLIST[@]}"
         do
@@ -800,7 +838,7 @@ load_rules() {
                 denied_hit="true"
             fi
         done
-        if [[ "${denied_hit}" == "true" ]]
+        if [[ -n "${kill_name}" && "${denied_hit}" == "true" ]]
         then
             log_error "Rule '${rule_name}' skipped: KillProcess '${kill_name}' is on the critical-process denylist"
             continue
@@ -835,6 +873,8 @@ load_rules() {
         RULE_BUTTON_TEXTS+=("${button_text}")
         RULE_BUTTON_ACTIONS+=("${button_action}")
         RULE_DISMISS_TEXTS+=("${dismiss_text}")
+        RULE_INFO_TEXTS+=("${info_text}")
+        RULE_INFO_ACTIONS+=("${info_action}")
         RULE_WATCHES+=("${watch_name}")
         RULE_DIALOG_WIDTHS+=("${dialog_width}")
         RULE_DIALOG_HEIGHTS+=("${dialog_height}")
@@ -847,6 +887,12 @@ load_rules() {
         RULE_DIALOG_ALIGNMENTS+=("${dialog_alignment}")
         RULE_DIALOG_MESSAGE_POSITIONS+=("${dialog_message_position}")
         RULE_LAST_DIALOG+=("0")
+
+        if [[ -z "${kill_name}" ]]
+        then
+            log_info "Rule loaded: name='${rule_name}' type=notify (dialog only, nothing is killed) cooldown=${cooldown}s"
+            continue
+        fi
 
         if [[ -n "${predicate}" ]]
         then
@@ -883,7 +929,11 @@ record_tracking() {
     fi
 
     "${DEFAULTS}" write "${track_file}" RuleName -string "${RULE_NAMES[${idx}]}"
-    "${DEFAULTS}" write "${track_file}" KillProcess -string "${RULE_KILLS[${idx}]}"
+    # Notify-only rules have no KillProcess; never write an empty one.
+    if [[ -n "${RULE_KILLS[${idx}]}" ]]
+    then
+        "${DEFAULTS}" write "${track_file}" KillProcess -string "${RULE_KILLS[${idx}]}"
+    fi
 
     if [[ -n "${counter_key}" ]]
     then
@@ -1004,22 +1054,26 @@ run_dialog() {
     return "${dialog_rc}"
 }
 
-# Opens the rule's ButtonAction in the user's session as ONE argument (never eval'd, never shell-built).
+# Opens a rule's ButtonAction or InfoButtonAction in the user's session as ONE argument (never eval'd,
+# never shell-built). $1 = key name for the log, $2 = the action.
 open_button_action() {
-    local action="$1"
-    log_info "Opening ButtonAction for ${CONSOLE_USER}: ${action}"
+    local key="$1"
+    local action="$2"
+    log_info "Opening ${key} for ${CONSOLE_USER}: ${action}"
     if ! "${LAUNCHCTL}" asuser "${CONSOLE_UID}" "${SUDO}" -u "${CONSOLE_USER}" "${OPEN}" -- "${action}" >/dev/null 2>&1
     then
-        log_warn "open failed for ButtonAction: ${action}"
+        log_warn "open failed for ${key}: ${action}"
     fi
 }
 
-# Runs one dialog and, if button 1 was pressed and the rule has a ButtonAction, performs it.
+# Runs one dialog, then performs the rule's ButtonAction if button 1 was pressed (rc 0) or its
+# InfoButtonAction if the info button was pressed (rc 3). Either may be empty.
 # Runs as a background job started by show_rule_dialog; CONSOLE_USER/UID are inherited at fork.
 run_dialog_with_action() {
     local action="$1"
+    local info_action="$2"
     local dialog_rc=0
-    shift
+    shift 2
 
     if run_dialog "$@"
     then
@@ -1031,8 +1085,23 @@ run_dialog_with_action() {
 
     if [[ "${dialog_rc}" -eq 0 && -n "${action}" ]]
     then
-        open_button_action "${action}"
+        open_button_action "ButtonAction" "${action}"
+    elif [[ "${dialog_rc}" -eq 3 && -n "${info_action}" ]]
+    then
+        open_button_action "InfoButtonAction" "${info_action}"
     fi
+}
+
+# Sets EXPANDED_MESSAGE: the rule's DialogMessage with the {{...}} variables filled in.
+# Plain parameter expansion, so nothing in the message or the values is ever evaluated.
+expand_message_variables() {
+    local idx="$1"
+    local message="${RULE_MESSAGES[${idx}]}"
+
+    message="${message//'{{companyName}}'/${ORG_NAME_FRIENDLY}}"
+    message="${message//'{{ruleName}}'/${RULE_NAMES[${idx}]}}"
+    message="${message//'{{killProcess}}'/${RULE_KILLS[${idx}]}}"
+    EXPANDED_MESSAGE="${message}"
 }
 
 show_rule_dialog() {
@@ -1042,7 +1111,7 @@ show_rule_dialog() {
 
     if [[ ! -x "${DIALOG_BIN}" ]]
     then
-        log_error "Rule '${rule_name}': swiftDialog missing at ${DIALOG_BIN}; kill done, no dialog"
+        log_error "Rule '${rule_name}': swiftDialog missing at ${DIALOG_BIN}; no dialog shown"
         return 0
     fi
 
@@ -1059,9 +1128,10 @@ show_rule_dialog() {
         dialog_height="${appSizeSmall}"
     fi
 
+    expand_message_variables "${idx}"
     dialog_args=(
         --height "${dialog_height}"
-        --message "${RULE_MESSAGES[${idx}]}"
+        --message "${EXPANDED_MESSAGE}"
         --button1text "${RULE_BUTTON_TEXTS[${idx}]}"
     )
 
@@ -1118,6 +1188,12 @@ show_rule_dialog() {
         dialog_args+=(--button2text "${RULE_DISMISS_TEXTS[${idx}]}")
     fi
 
+    # The info button exists only with an InfoButtonAction; swiftDialog exits 3 when it is pressed.
+    if [[ -n "${RULE_INFO_ACTIONS[${idx}]}" ]]
+    then
+        dialog_args+=(--infobuttontext "${RULE_INFO_TEXTS[${idx}]}")
+    fi
+
     # No banner configured, or DialogShowBanner false: the organisation name is the title instead.
     if [[ -z "${BANNER_IMAGE}" || "${RULE_DIALOG_BANNERS[${idx}]}" == "false" ]]
     then
@@ -1135,7 +1211,7 @@ show_rule_dialog() {
     fi
 
     log_info "Rule '${rule_name}': showing dialog to ${CONSOLE_USER} (uid ${CONSOLE_UID})"
-    run_dialog_with_action "${RULE_BUTTON_ACTIONS[${idx}]}" "${dialog_args[@]}" &
+    run_dialog_with_action "${RULE_BUTTON_ACTIONS[${idx}]}" "${RULE_INFO_ACTIONS[${idx}]}" "${dialog_args[@]}" &
 }
 
 maybe_show_dialog() {
@@ -1160,8 +1236,16 @@ maybe_show_dialog() {
 }
 
 # Shared by both handler types: record attempt, kill every time, dialog subject to cooldown.
+# A notify-only rule (no KillProcess) skips the kill entirely: dialog and attempt tracking only.
 handle_rule_event() {
     local idx="$1"
+
+    if [[ -z "${RULE_KILLS[${idx}]}" ]]
+    then
+        maybe_show_dialog "${idx}"
+        record_attempt "${idx}"
+        return 0
+    fi
 
     # Order matters for speed: kill first, dialog second, SIGKILL escalation third, tracking last.
     if ! kill_process "${RULE_KILLS[${idx}]}" "${RULE_NAMES[${idx}]}"

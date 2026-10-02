@@ -22,9 +22,19 @@ struct DialogMessagePartsTests {
         #expect(DialogMessageParts.join(title: "Two\nlines", body: "x") == "# Two lines\n\nx")
     }
 
+    @Test func insertPutsTheSnippetAtTheSelectionWithTheCursorAfterIt() {
+        let text = "Policy of ."
+        let at = text.index(text.startIndex, offsetBy: 10)
+        let edit = MarkdownStyling.insert("{{companyName}}", in: text, range: at..<at)
+        #expect(edit.text == "Policy of {{companyName}}.")
+        #expect(edit.text.distance(from: edit.text.startIndex, to: edit.selection.lowerBound) == 25 && edit.selection.isEmpty)
+        let replaced = MarkdownStyling.insert("{{ruleName}}", in: "abc", range: "abc".startIndex..<"abc".endIndex)
+        #expect(replaced.text == "{{ruleName}}")
+    }
+
     @Test func everyTemplateAndPresetSurvivesSplitAndJoin() {
         var messages = BuiltInTemplates.all.map { $0.rule(settings: RuleSettings()).dialogMessage }
-        messages += DialogPreset.allCases.map { $0.message(appName: "App", org: "Org") }
+        messages += DialogPreset.allCases.map { $0.message(appName: "App") }
         for message in messages {
             let parts = DialogMessageParts.split(message)
             #expect(!parts.title.isEmpty)

@@ -14,7 +14,7 @@ struct RuleImportResult: Sendable {
 enum RuleImporter {
     static let knownKeys: Set<String> = [
         "KillProcess", "DialogMessage", "Predicate", "WatchProcess",
-        "CooldownSeconds", "ButtonText", "ButtonAction", "DismissButtonText",
+        "CooldownSeconds", "ButtonText", "ButtonAction", "DismissButtonText", "InfoButtonText", "InfoButtonAction",
         "DialogWidth", "DialogHeight", "DialogPosition", "DialogOnTop", "DialogMoveable", "DialogBlurScreen",
         "DialogShowBanner", "DialogShowIcon", "DialogMessageAlignment", "DialogMessagePosition",
     ]
@@ -81,7 +81,7 @@ enum RuleImporter {
 
         let rule = RuleModel(
             name: name,
-            killProcess: string("KillProcess", field: .killProcess) ?? "",
+            killProcess: string("KillProcess", field: .killProcess),
             dialogMessage: string("DialogMessage", field: .dialogMessage) ?? "",
             predicate: string("Predicate", field: .predicate),
             watchProcess: string("WatchProcess", field: .watchProcess),
@@ -89,6 +89,8 @@ enum RuleImporter {
             buttonText: string("ButtonText", field: .buttonText),
             buttonAction: string("ButtonAction", field: .buttonAction),
             dismissButtonText: string("DismissButtonText", field: .dismissButtonText),
+            infoButtonText: string("InfoButtonText", field: .infoButtonText),
+            infoButtonAction: string("InfoButtonAction", field: .infoButtonAction),
             dialogWidth: integer("DialogWidth", field: .dialogWidth),
             dialogHeight: integer("DialogHeight", field: .dialogHeight),
             dialogPosition: position,

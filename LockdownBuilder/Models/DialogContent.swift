@@ -20,7 +20,7 @@ enum DialogCommand {
     static func arguments(for rule: RuleModel, settings: RuleSettings) -> [String] {
         var args = [
             "--height", String(rule.dialogHeight ?? defaultHeight),
-            "--message", rule.dialogMessage,
+            "--message", MessageVariables.expand(rule.dialogMessage, rule: rule, settings: settings),
             "--button1text", rule.buttonText ?? "OK",
         ]
         if let width = rule.dialogWidth { args += ["--width", String(width)] }
@@ -37,6 +37,7 @@ enum DialogCommand {
         if rule.dialogMoveable ?? true { args.append("--moveable") }
         if rule.dialogBlurScreen ?? false { args.append("--blurscreen") }
         if let dismiss = rule.dismissButtonText { args += ["--button2text", dismiss] }
+        if rule.infoButtonAction != nil { args += ["--infobuttontext", rule.infoButtonText ?? RuleModel.defaultInfoButtonText] }
         if showsBanner(rule, settings: settings) {
             args += ["--bannerimage", settings.bannerImagePath, "--title", "none"]
             if let height = settings.bannerHeight { args += ["--bannerheight", String(height)] }
@@ -66,6 +67,12 @@ enum DialogCommand {
                 "“\(rule.buttonText ?? "OK")” pressed. The dialog just closes."
             }
         case 2: "“\(rule.dismissButtonText ?? "Button 2")” pressed. The dialog just closes."
+        case 3:
+            if let action = rule.infoButtonAction {
+                "“\(rule.infoButtonText ?? RuleModel.defaultInfoButtonText)” pressed. The watcher would now open \(action)."
+            } else {
+                "Info button pressed. The dialog just closes."
+            }
         case 10: "Dialog quit with ⌘Q."
         case 15: "Dialog was closed (terminated)."
         default: "Dialog exited with code \(status)."
@@ -128,8 +135,10 @@ enum DialogPreset: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
-    func message(appName: String, org: String) -> String {
+    /// The company name is the `{{companyName}}` variable, filled in by the watcher.
+    func message(appName: String) -> String {
         let app = appName.trimmingCharacters(in: .whitespaces).isEmpty ? "This app" : appName
+        let org = MessageVariable.companyName.token
         switch self {
         case .appBlocked:
             return "# \(app) Blocked\n\n\(app) isn't available on this Mac.\n\nThis is a policy of \(org). If you believe you need access, please contact the Service Desk."
@@ -147,21 +156,37 @@ enum DryRun {
         var steps: [String] = []
         let cooldown = rule.cooldownSeconds ?? RuleModel.defaultCooldownSeconds
         switch rule.kind {
-        case .event:
+        case .event, .notifyOnly:
             steps.append("Streams the unified log with the predicate:\n\(rule.predicate ?? "")")
             steps.append("Each matching log line (about 0.25 s after the event) triggers the rule. No polling.")
         case .presence:
-            steps.append("Polls every 0.5 s for a process named exactly “\(rule.killProcess)” (pgrep -x).")
+            steps.append("Polls every 0.5 s for a process named exactly “\(rule.killProcess ?? "")” (pgrep -x).")
             steps.append("Caveat: a process that starts and exits within one poll interval can be missed.")
         case .watchOneKillAnother:
             steps.append("Polls every 0.5 s for a process named exactly “\(rule.watchProcess ?? "")” (pgrep -x).")
         }
-        steps.append("Kills every process named exactly “\(rule.killProcess)” (pkill -x). The kill happens every time.")
-        steps.append("Shows the dialog, at most once every \(cooldown) s (CooldownSeconds rate-limits the dialog only).")
+        if let kill = rule.killProcess {
+            steps.append("Kills every process named exactly “\(kill)” (pkill -x). The kill happens every time.")
+            steps.append("Shows the dialog, at most once every \(cooldown) s (CooldownSeconds rate-limits the dialog only).")
+        } else {
+            steps.append("Shows the dialog; nothing is killed. The dialog appears at most once every \(cooldown) s (CooldownSeconds).")
+        }
+        if MessageVariables.usesVariables(rule.dialogMessage) {
+            let used = MessageVariable.allCases.filter { rule.dialogMessage.contains($0.token) }
+            steps.append("Fills in " + used.map { "\($0.token) → “\($0.value(rule: rule, settings: settings))”" }.joined(separator: ", ") + " when the dialog is shown.")
+        }
         var buttons = "Primary button “\(rule.buttonText ?? "OK")”"
         buttons += rule.buttonAction.map { " opens \($0)" } ?? " closes the dialog"
         if let dismiss = rule.dismissButtonText { buttons += "; secondary button “\(dismiss)” only closes the dialog" }
+        if let info = rule.infoButtonAction {
+            buttons += "; “\(rule.infoButtonText ?? RuleModel.defaultInfoButtonText)” button (bottom left) closes the dialog and opens \(info)"
+        }
         steps.append(buttons + ".")
+        if let version = rule.requiredWatcherVersion {
+            steps.append("Needs Restricted Item Watcher \(version) or later."
+                + (rule.kind == .notifyOnly ? " Older watchers skip a rule without KillProcess as invalid." : "")
+                + (version == RuleModel.variablesAndInfoButtonMinimumWatcherVersion ? " Older watchers show {{…}} variables as typed and have no info button." : ""))
+        }
         steps.append("Preference domain \(settings.ruleDomain(for: rule.name)), read from /Library/Managed Preferences/\(settings.fileName(for: rule.name)).")
         return steps
     }
@@ -227,7 +252,8 @@ enum DialogLiveUpdate {
         // Width and height are not here: the open window resizes through the command file.
         [rule.dialogPosition?.rawValue, rule.dialogOnTop.map(String.init), rule.dialogMoveable.map(String.init),
          rule.dialogBlurScreen.map(String.init), rule.dialogShowBanner.map(String.init), rule.dialogShowIcon.map(String.init),
-         rule.dialogMessageAlignment?.rawValue, rule.dialogMessagePosition?.rawValue]
+         rule.dialogMessageAlignment?.rawValue, rule.dialogMessagePosition?.rawValue,
+         rule.infoButtonAction == nil ? nil : (rule.infoButtonText ?? RuleModel.defaultInfoButtonText)]
             .map { $0 ?? "-" }
     }
 
@@ -237,8 +263,11 @@ enum DialogLiveUpdate {
         if !DialogCommand.showsBanner(new, settings: newSettings), oldSettings.orgNameFriendly != newSettings.orgNameFriendly {
             lines.append("title: \(encode(newSettings.orgNameFriendly))")
         }
-        if old.dialogMessage != new.dialogMessage {
-            lines.append("message: \(encode(new.dialogMessage))")
+        // Compared expanded, so a changed company name or rule name updates a message that uses the variable.
+        let oldMessage = MessageVariables.expand(old.dialogMessage, rule: old, settings: oldSettings)
+        let newMessage = MessageVariables.expand(new.dialogMessage, rule: new, settings: newSettings)
+        if oldMessage != newMessage {
+            lines.append("message: \(encode(newMessage))")
         }
         if (old.buttonText ?? "OK") != (new.buttonText ?? "OK") {
             lines.append("button1text: \(encode(new.buttonText ?? "OK"))")

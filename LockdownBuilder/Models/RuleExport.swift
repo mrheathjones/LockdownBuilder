@@ -9,15 +9,17 @@ enum RuleExport {
     /// The rule's keys as a plist dictionary. Absent optionals are omitted, never written empty.
     static func plistDictionary(for rule: RuleModel) -> [String: PlistValue] {
         var d: [String: PlistValue] = [
-            "KillProcess": .string(rule.killProcess),
             "DialogMessage": .string(rule.dialogMessage),
         ]
+        if let v = rule.killProcess { d["KillProcess"] = .string(v) }
         if let v = rule.predicate { d["Predicate"] = .string(v) }
         if let v = rule.watchProcess { d["WatchProcess"] = .string(v) }
         if let v = rule.cooldownSeconds { d["CooldownSeconds"] = .integer(v) }
         if let v = rule.buttonText { d["ButtonText"] = .string(v) }
         if let v = rule.buttonAction { d["ButtonAction"] = .string(v) }
         if let v = rule.dismissButtonText { d["DismissButtonText"] = .string(v) }
+        if let v = rule.infoButtonText { d["InfoButtonText"] = .string(v) }
+        if let v = rule.infoButtonAction { d["InfoButtonAction"] = .string(v) }
         if let v = rule.dialogWidth { d["DialogWidth"] = .integer(v) }
         if let v = rule.dialogHeight { d["DialogHeight"] = .integer(v) }
         if let v = rule.dialogPosition { d["DialogPosition"] = .string(v.rawValue) }
@@ -45,24 +47,26 @@ enum RuleExport {
             "title": "\(settings.orgPlistDomain).\(settings.preference).<rule-name>",
             "description": "A Restricted Item Watcher rule. One preference domain per rule; the domain is \(settings.orgPlistDomain).\(settings.preference).<rule-name> with a lowercase kebab-case rule name.",
             "type": "object",
-            "required": ["KillProcess", "DialogMessage"],
+            // KillProcess is required unless Predicate is present. That is not expressed here (it needs a
+            // root-level anyOf, unverified in Jamf's schema editor); the app and the watcher enforce it.
+            "required": ["DialogMessage"],
             "additionalProperties": false,
             "properties": [
                 "KillProcess": [
                     "title": "Process to kill",
-                    "description": "Exact process name (pgrep -x / pkill -x). Full names match and may contain spaces, e.g. System Settings.",
+                    "description": "Exact process name (pgrep -x / pkill -x). Full names match and may contain spaces, e.g. System Settings. Required unless Predicate is set: a rule with a Predicate and no KillProcess only shows the dialog and quits nothing (watcher \(RuleModel.notifyOnlyMinimumWatcherVersion) or later).",
                     "type": "string",
                     "minLength": 1,
                 ] as [String: Any],
                 "DialogMessage": [
                     "title": "Dialog message",
-                    "description": "swiftDialog Markdown. Start with “# Title” for a large bold title. Real newlines and blank lines make paragraphs.",
+                    "description": "swiftDialog Markdown. Start with “# Title” for a large bold title. Real newlines and blank lines make paragraphs. Variables filled in by the watcher (\(RuleModel.variablesAndInfoButtonMinimumWatcherVersion) or later): \(MessageVariable.allCases.map(\.token).joined(separator: ", ")).",
                     "type": "string",
                     "minLength": 1,
                 ] as [String: Any],
                 "Predicate": [
                     "title": "Unified-log predicate",
-                    "description": "Present: event-driven rule. Absent: presence rule, polled every 0.5 s.",
+                    "description": "Present: event-driven rule. Absent: presence rule, polled every 0.5 s (KillProcess is then required).",
                     "type": "string",
                     "minLength": 1,
                 ] as [String: Any],
@@ -74,7 +78,7 @@ enum RuleExport {
                 ] as [String: Any],
                 "CooldownSeconds": [
                     "title": "Dialog cooldown (seconds)",
-                    "description": "Dialog rate limit only; the kill happens every time.",
+                    "description": "Dialog rate limit only; the kill (if the rule has a KillProcess) happens every time.",
                     "type": "integer",
                     "minimum": 0,
                     "default": RuleModel.defaultCooldownSeconds,
@@ -96,6 +100,19 @@ enum RuleExport {
                     "description": "Adds a secondary button that only closes the dialog.",
                     "type": "string",
                     "minLength": 1,
+                ] as [String: Any],
+                "InfoButtonAction": [
+                    "title": "More-information button action",
+                    "description": "Adds a “More Information” button (bottom left) that opens this when pressed: an absolute path (a local file or app) or a scheme://… URL. file:// is refused. Watcher \(RuleModel.variablesAndInfoButtonMinimumWatcherVersion) or later.",
+                    "type": "string",
+                    "pattern": pathOrURL,
+                ] as [String: Any],
+                "InfoButtonText": [
+                    "title": "More-information button label",
+                    "description": "Label for the button added by InfoButtonAction.",
+                    "type": "string",
+                    "minLength": 1,
+                    "default": RuleModel.defaultInfoButtonText,
                 ] as [String: Any],
                 "DialogWidth": [
                     "title": "Dialog width (points)",

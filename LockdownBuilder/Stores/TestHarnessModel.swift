@@ -35,19 +35,23 @@ final class TestHarnessModel {
     var dialogInstalled: Bool { FileManager.default.isExecutableFile(atPath: DialogCommand.dialogPath) }
     var shellCommand: String { DialogCommand.shellCommand(for: rule, settings: settings) }
 
-    /// Issues on KillProcess (empty, denylisted, unmatchable) block the live kill test.
+    /// Issues on KillProcess (empty, denylisted, unmatchable) block the live kill test, and a rule
+    /// without KillProcess has nothing to kill.
     var killBlockedReason: String? {
-        rule.validate().first { $0.field == .killProcess && $0.isError }?.message
+        if let issue = rule.validate().first(where: { $0.field == .killProcess && $0.isError }) { return issue.message }
+        return rule.killProcess == nil ? "This rule has no KillProcess: it shows the dialog and nothing is killed." : nil
     }
 
     var canLiveKill: Bool {
-        killBlockedReason == nil && confirmation == rule.killProcess && !isKilling
+        killBlockedReason == nil && rule.killProcess != nil && confirmation == rule.killProcess && !isKilling
     }
 
     func refreshMatches() async {
         matchError = nil
         do {
-            killMatches = try await runner.pgrep(rule.killProcess)
+            if let kill = rule.killProcess {
+                killMatches = try await runner.pgrep(kill)
+            }
             if let watch = rule.watchProcess {
                 watchMatches = try await runner.pgrep(watch)
             }
@@ -81,14 +85,14 @@ final class TestHarnessModel {
     }
 
     func liveKill() async {
-        guard canLiveKill else { return }
+        guard canLiveKill, let kill = rule.killProcess else { return }
         isKilling = true
         defer { isKilling = false; confirmation = "" }
         do {
-            let killed = try await runner.pkill(rule.killProcess)
+            let killed = try await runner.pkill(kill)
             killResult = killed
-                ? "Sent SIGTERM to every process named “\(rule.killProcess)”."
-                : "No process named “\(rule.killProcess)” was running."
+                ? "Sent SIGTERM to every process named “\(kill)”."
+                : "No process named “\(kill)” was running."
             await refreshMatches()
         } catch {
             killResult = error.localizedDescription

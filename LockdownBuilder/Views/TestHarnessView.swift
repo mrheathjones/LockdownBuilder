@@ -73,6 +73,14 @@ struct TestHarnessView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
+            if model.rule.killProcess != nil { runningNow }
+        }
+        .padding(14)
+        .card()
+    }
+
+    @ViewBuilder
+    private var runningNow: some View {
             Divider()
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Image(systemName: "circle.fill").font(.system(size: 7))
@@ -88,18 +96,15 @@ struct TestHarnessView: View {
                 .help("Run pgrep -x again")
             }
             .font(.system(size: 11))
-        }
-        .padding(14)
-        .card()
     }
 
     @ViewBuilder
     private var matchSummary: some View {
         if let error = model.matchError {
             Text(error).foregroundStyle(.red)
-        } else if let kill = model.killMatches {
+        } else if let kill = model.killMatches, let killName = model.rule.killProcess {
             VStack(alignment: .leading) {
-                Text(describe(kill, name: model.rule.killProcess))
+                Text(describe(kill, name: killName))
                 if let watch = model.watchMatches, let name = model.rule.watchProcess {
                     Text(describe(watch, name: name))
                 }
@@ -164,11 +169,13 @@ struct TestHarnessView: View {
             cardHeader("exclamationmark.triangle.fill", .orange, "Live kill test (optional)",
                        "Runs pkill -x on this Mac right now. Unsaved work in that app is lost. No dialog is shown.",
                        badge: "DESTRUCTIVE", badgeTint: .orange)
-            if let reason = model.killBlockedReason {
+            if model.rule.killProcess == nil, let reason = model.killBlockedReason {
+                Label(reason, systemImage: "nosign").foregroundStyle(.secondary)
+            } else if let reason = model.killBlockedReason {
                 Label(reason, systemImage: "xmark.circle.fill").foregroundStyle(.red)
             } else {
                 HStack {
-                    TextField("Type “\(model.rule.killProcess)” to confirm", text: $model.confirmation)
+                    TextField("Type “\(model.rule.killProcess ?? "")” to confirm", text: $model.confirmation)
                         .textFieldStyle(.roundedBorder)
                         .accessibilityLabel("Process name confirmation")
                     Button("Quit Now", role: .destructive) {

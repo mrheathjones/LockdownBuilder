@@ -32,7 +32,9 @@ struct TemplateDetailView: View {
                 .card()
 
                 VStack(spacing: 0) {
-                    row("Process to quit", key: "KillProcess") { Text(rule.killProcess) }
+                    row("Process to quit", key: rule.killProcess == nil ? nil : "KillProcess") {
+                        Text(rule.killProcess ?? "None (notify only: the dialog is shown and nothing is quit)")
+                    }
                     if let watch = rule.watchProcess {
                         Divider()
                         row("Process to watch", key: "WatchProcess") { Text(watch) }
@@ -45,6 +47,10 @@ struct TemplateDetailView: View {
                             Text("Presence (polled every 0.5 s)")
                         }
                     }
+                    if let cooldown = rule.cooldownSeconds {
+                        Divider()
+                        row("Cooldown", key: "CooldownSeconds") { Text("\(cooldown) s") }
+                    }
                     Divider()
                     row("Message", key: "DialogMessage") { Text(rule.dialogMessage) }
                     if rule.buttonText != nil || rule.dismissButtonText != nil {
@@ -56,6 +62,14 @@ struct TemplateDetailView: View {
                     if let action = rule.buttonAction {
                         Divider()
                         row("Main button opens", key: "ButtonAction") { Text(action) }
+                    }
+                    if let info = rule.infoButtonAction {
+                        Divider()
+                        row("“\(rule.infoButtonText ?? RuleModel.defaultInfoButtonText)” opens", key: "InfoButtonAction") { Text(info) }
+                    }
+                    if let version = rule.requiredWatcherVersion {
+                        Divider()
+                        row("Needs watcher", key: nil) { Text("\(version) or later") }
                     }
                 }
                 .card()

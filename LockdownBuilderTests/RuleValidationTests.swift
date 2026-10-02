@@ -128,6 +128,80 @@ struct RuleValidationTests {
         #expect(rule.kind == .event)
     }
 
+    // MARK: Notify-only (Predicate without KillProcess)
+
+    private func notifyRule() -> RuleModel {
+        RuleModel(name: "my-notice", dialogMessage: "# Blocked\n\nNot allowed.", predicate: #"process == "X""#)
+    }
+
+    @Test func predicateWithoutKillProcessIsAValidNotifyOnlyRule() {
+        let rule = notifyRule()
+        #expect(rule.validate().isEmpty)
+        #expect(rule.kind == .notifyOnly)
+    }
+
+    @Test func presenceRuleWithoutKillProcessIsInvalid() {
+        let rule = RuleModel(name: "my-rule", dialogMessage: "# Blocked")
+        #expect(rule.validate().map(\.id) == ["KillProcess/emptyString"])
+        #expect(!rule.isValid)
+    }
+
+    @Test func watchRuleWithoutKillProcessIsInvalid() {
+        let rule = RuleModel(name: "my-rule", dialogMessage: "# Blocked", watchProcess: "Extension")
+        #expect(rule.validate().map(\.id) == ["KillProcess/emptyString"])
+    }
+
+    @Test func emptyKillProcessIsInvalidEvenWithAPredicate() {
+        var rule = notifyRule(); rule.killProcess = ""
+        #expect(rule.validate().map(\.id) == ["KillProcess/emptyString"])
+    }
+
+    @Test func watchProcessWithPredicateIsInvalidWithoutKillProcessToo() {
+        var rule = notifyRule(); rule.watchProcess = "Y"
+        #expect(codes(rule) == [.predicateWithWatchProcess])
+    }
+
+    @Test func denylistStillAppliesToAnEventRuleWithKillProcess() {
+        var rule = notifyRule(); rule.killProcess = "loginwindow"
+        #expect(codes(rule) == [.killProcessDenylisted])
+        rule.killProcess = "Finder"
+        #expect(rule.validate().isEmpty)
+        #expect(rule.kind == .event)
+    }
+
+    // MARK: Message variables / info button
+
+    @Test func knownVariablesExpandAndUnknownOnesWarn() {
+        var rule = TestSupport.validRule()
+        rule.dialogMessage = "# {{killProcess}} blocked\n\n{{companyName}} / {{ruleName}} / {{nope}} / {computername}"
+        #expect(rule.validate().map(\.id) == ["DialogMessage/unknownVariable"])
+        #expect(rule.isValid)   // a warning, not an error
+        var s = RuleSettings(); s.orgNameFriendly = "Acme & Sons"
+        #expect(MessageVariables.expand(rule.dialogMessage, rule: rule, settings: s)
+                == "# Some App blocked\n\nAcme & Sons / my-rule / {{nope}} / {computername}")
+        #expect(MessageVariables.unknownNames(in: "{{a}} {{a}} {{companyName}} {{b}}") == ["a", "b"])
+        #expect(rule.requiredWatcherVersion == "1.10")
+        rule.dialogMessage = "# Plain"
+        #expect(rule.requiredWatcherVersion == nil)
+    }
+
+    @Test func infoButtonNeedsAnActionAndFollowsTheActionRules() {
+        var rule = TestSupport.validRule()
+        rule.infoButtonText = "Why?"
+        #expect(codes(rule) == [.infoButtonTextWithoutAction])
+        rule.infoButtonAction = "https://example.com/policy"
+        #expect(rule.validate().isEmpty)
+        #expect(rule.requiredWatcherVersion == "1.10")
+        rule.infoButtonAction = "/Library/Docs/policy.pdf"; rule.infoButtonText = nil
+        #expect(rule.validate().isEmpty)
+        rule.infoButtonAction = "file:///Library/Docs/policy.pdf"
+        #expect(rule.validate().map(\.id) == ["InfoButtonAction/buttonActionFileScheme"])
+        rule.infoButtonAction = "Docs/policy.pdf"
+        #expect(rule.validate().map(\.id) == ["InfoButtonAction/buttonActionInvalid"])
+        rule.infoButtonAction = ""
+        #expect(rule.validate().map(\.id) == ["InfoButtonAction/emptyString"])
+    }
+
     // MARK: CooldownSeconds
 
     @Test(arguments: [0, 1, 5, 3600])

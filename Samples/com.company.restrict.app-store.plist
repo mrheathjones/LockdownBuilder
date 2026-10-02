@@ -9,7 +9,7 @@
 	<key>DialogMessage</key>
 	<string># App Store Blocked
 
-Software for this Mac is provided through Self Service by Company Name.
+Software for this Mac is provided through Self Service by {{companyName}}.
 
 Open Self Service to find the app you need.</string>
 	<key>DismissButtonText</key>

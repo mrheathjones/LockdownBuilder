@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>PayloadContent</key>
+	<array>
+		<dict>
+			<key>PayloadContent</key>
+			<dict>
+				<key>com.company.restrict.usb-block</key>
+				<dict>
+					<key>Forced</key>
+					<array>
+						<dict>
+							<key>mcx_preference_settings</key>
+							<dict>
+								<key>CooldownSeconds</key>
+								<integer>10</integer>
+								<key>DialogMessage</key>
+								<string># External storage is blocked
+
+External drives and other removable storage can't be used on this Mac.
+
+This is a policy of {{companyName}}. If you believe you need access, please contact the Service Desk.</string>
+								<key>Predicate</key>
+								<string>process == "diskarbitrationd" AND subsystem == "com.apple.DiskArbitration.diskarbitrationd" AND eventMessage BEGINSWITH "unable to mount" AND eventMessage CONTAINS "status code 0x00000001"</string>
+							</dict>
+						</dict>
+					</array>
+				</dict>
+			</dict>
+			<key>PayloadDisplayName</key>
+			<string>Managed Preferences: com.company.restrict.usb-block</string>
+			<key>PayloadIdentifier</key>
+			<string>com.company.restrict.usb-block.payload</string>
+			<key>PayloadType</key>
+			<string>com.apple.ManagedClient.preferences</string>
+			<key>PayloadUUID</key>
+			<string>EB235851-A790-5B34-90C8-A028B2172AA9</string>
+			<key>PayloadVersion</key>
+			<integer>1</integer>
+		</dict>
+	</array>
+	<key>PayloadDisplayName</key>
+	<string>Restrict - usb-block</string>
+	<key>PayloadIdentifier</key>
+	<string>com.company.restrict.usb-block</string>
+	<key>PayloadOrganization</key>
+	<string>Company Name</string>
+	<key>PayloadScope</key>
+	<string>System</string>
+	<key>PayloadType</key>
+	<string>Configuration</string>
+	<key>PayloadUUID</key>
+	<string>C8DFE800-EE3F-5BB1-80A1-0194A3368740</string>
+	<key>PayloadVersion</key>
+	<integer>1</integer>
+</dict>
+</plist>

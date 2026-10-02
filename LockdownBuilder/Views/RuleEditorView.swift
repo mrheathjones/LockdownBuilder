@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct RuleEditorView: View {
     @Bindable var store: ProjectStore
@@ -105,7 +106,9 @@ private struct RuleForm: View {
             VStack(alignment: .leading, spacing: 22) {
                 header
                 if !draft.importNotes.isEmpty { importNotes }
-                step(1, "What to quit") { whatToQuit }
+                step(1, "What to quit") {
+                    if draft.mode == .notifyOnly { nothingToQuit } else { whatToQuit }
+                }
                 step(2, "When to act") { whenToAct }
                 step(3, "What the user sees") { whatTheUserSees }
             }
@@ -134,8 +137,8 @@ private struct RuleForm: View {
             }
         }
         .sheet(isPresented: $discovering) {
-            DiscoveryView(target: draft.rule.killProcess) { predicate in
-                draft.mode = .event
+            DiscoveryView(target: draft.rule.killProcess ?? "") { predicate in
+                if draft.mode != .notifyOnly { draft.mode = .event }
                 draft.rule.watchProcess = nil
                 draft.rule.predicate = predicate
             }
@@ -155,6 +158,7 @@ private struct RuleForm: View {
             case .presence: draft.rule.predicate = nil; draft.rule.watchProcess = nil
             case .event: draft.rule.watchProcess = nil
             case .watchOneKillAnother: draft.rule.predicate = nil
+            case .notifyOnly: draft.rule.watchProcess = nil; draft.rule.killProcess = nil
             }
         }
         .confirmationDialog(
@@ -163,7 +167,7 @@ private struct RuleForm: View {
         ) {
             Button("Replace Message") {
                 if let preset = pendingPreset {
-                    draft.rule.dialogMessage = preset.message(appName: draft.rule.killProcess, org: store.settings.orgNameFriendly)
+                    draft.rule.dialogMessage = preset.message(appName: draft.rule.killProcess ?? "")
                 }
                 pendingPreset = nil
             }
@@ -204,6 +208,12 @@ private struct RuleForm: View {
                 statusPill
             }
             issueRows(for: .name)
+            if let version = draft.rule.requiredWatcherVersion {
+                Label("Needs Restricted Item Watcher \(version) or later (the installer in Settings → Watcher deploys the current one).",
+                      systemImage: "info.circle")
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             HStack(spacing: 12) {
                 FieldLabel(title: "Display name", key: "PayloadDisplayName")
                     .frame(width: 130, alignment: .leading)
@@ -241,20 +251,23 @@ private struct RuleForm: View {
 
     /// "When [trigger] → quit [process] → show “[title]”": the rule in one line.
     private var sentence: some View {
-        let kill = draft.rule.killProcess.isEmpty ? "a process" : draft.rule.killProcess
+        let kill = draft.rule.killProcess ?? "a process"
         let trigger = switch draft.mode {
         case .presence: "\(kill) is running"
         case .watchOneKillAnother: "\(draft.rule.watchProcess ?? "a process") is running"
-        case .event: "a matching log line appears"
+        case .event, .notifyOnly: "a matching log line appears"
         }
-        let title = DialogMarkdown.parse(draft.rule.dialogMessage).title.map { "“\($0)”" } ?? "message"
+        let message = MessageVariables.expand(draft.rule.dialogMessage, rule: draft.rule, settings: store.settings)
+        let title = DialogMarkdown.parse(message).title.map { "“\($0)”" } ?? "message"
         return FlowLayout {
             Text("When")
             chip(trigger)
             Image(systemName: "arrow.right").foregroundStyle(.secondary)
-            Text("quit")
-            chip(kill, isError: hasError(.killProcess))
-            Image(systemName: "arrow.right").foregroundStyle(.secondary)
+            if draft.mode != .notifyOnly {
+                Text("quit")
+                chip(kill, isError: hasError(.killProcess))
+                Image(systemName: "arrow.right").foregroundStyle(.secondary)
+            }
             Text("show")
             chip(title)
         }
@@ -296,7 +309,7 @@ private struct RuleForm: View {
                 dropTile
                 FieldLabel(title: "Process to quit", key: "KillProcess")
                     .frame(width: 120, alignment: .leading)
-                TextField("Process to quit", text: $draft.rule.killProcess, prompt: Text("e.g. System Settings"))
+                TextField("Process to quit", text: $draft.rule.killProcess.orEmpty, prompt: Text("e.g. System Settings"))
                     .labelsHidden()
                     .accessibilityLabel("KillProcess")
                 Button("Choose…") { pickingTarget = true }
@@ -310,8 +323,8 @@ private struct RuleForm: View {
                         .font(.system(size: 11)).foregroundStyle(.secondary)
                 }
                 issueRows(for: .killProcess)
-                if !draft.rule.killProcess.isEmpty, !draft.rule.killProcess.contains("/") {
-                    ProcessStatusLabel(name: draft.rule.killProcess)
+                if let kill = draft.rule.killProcess, !kill.contains("/") {
+                    ProcessStatusLabel(name: kill)
                 }
             }
             .padding(.horizontal, 14)
@@ -327,14 +340,27 @@ private struct RuleForm: View {
         }
     }
 
+    /// Step 1 for a notify-only rule: there is no KillProcess to pick.
+    private var nothingToQuit: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Label("Nothing is quit. This rule only shows the dialog when the log line appears.", systemImage: "bell")
+            Text("A rule without KillProcess needs Restricted Item Watcher \(RuleModel.notifyOnlyMinimumWatcherVersion) or later. Older watchers skip it as invalid.")
+                .font(.system(size: 11)).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .card()
+    }
+
     private var dropTile: some View {
         RoundedRectangle(cornerRadius: 8)
             .strokeBorder(.tertiary, style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
             .frame(width: 40, height: 40)
             .overlay {
-                if draft.rule.killProcess.isEmpty {
+                if draft.rule.killProcess == nil {
                     Image(systemName: "square.and.arrow.down").foregroundStyle(.secondary)
-                } else if let icon = Self.appIcon(named: draft.rule.killProcess) {
+                } else if let icon = Self.appIcon(named: draft.rule.killProcess ?? "") {
                     Image(nsImage: icon).resizable().frame(width: 30, height: 30)
                 } else {
                     Image(systemName: "macwindow").foregroundStyle(.secondary)
@@ -358,10 +384,15 @@ private struct RuleForm: View {
 
     private var whenToAct: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                modeCard(.presence, symbol: "eye", detail: "Polls every 0.5 s while the app runs")
-                modeCard(.event, symbol: "bolt", detail: "Fires on a unified-log line, ~0.25 s")
-                modeCard(.watchOneKillAnother, symbol: "binoculars", detail: "Watch one process, quit another")
+            Grid(horizontalSpacing: 8, verticalSpacing: 8) {
+                GridRow {
+                    modeCard(.presence, symbol: "eye", detail: "Polls every 0.5 s while the app runs")
+                    modeCard(.event, symbol: "bolt", detail: "Fires on a unified-log line, ~0.25 s")
+                }
+                GridRow {
+                    modeCard(.watchOneKillAnother, symbol: "binoculars", detail: "Watch one process, quit another")
+                    modeCard(.notifyOnly, symbol: "bell", detail: "Shows the dialog on a log line, quits nothing")
+                }
             }
             .accessibilityElement(children: .contain)
             .accessibilityLabel("Rule type")
@@ -372,7 +403,7 @@ private struct RuleForm: View {
                         .font(.system(size: 11.5)).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                     switch draft.mode {
-                    case .event:
+                    case .event, .notifyOnly:
                         VStack(alignment: .leading, spacing: 6) {
                             FieldLabel(title: "Log predicate", key: "Predicate")
                             TextField("Log predicate", text: $draft.rule.predicate.orEmpty,
@@ -408,7 +439,9 @@ private struct RuleForm: View {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {
                         FieldLabel(title: "Cooldown", key: "CooldownSeconds",
-                                   subtitle: "Shortest time between dialogs. The quit happens every time.")
+                                   subtitle: draft.mode == .notifyOnly
+                                       ? "Shortest time between dialogs."
+                                       : "Shortest time between dialogs. The quit happens every time.")
                         Spacer()
                         TextField("Cooldown", text: cooldownBinding, prompt: Text("\(RuleModel.defaultCooldownSeconds)"))
                             .labelsHidden()
@@ -497,7 +530,8 @@ private struct RuleForm: View {
     private var whatTheUserSees: some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 10) {
-                MessageEditor(message: $draft.rule.dialogMessage, hasError: hasError(.dialogMessage)) {
+                MessageEditor(message: $draft.rule.dialogMessage, hasError: hasError(.dialogMessage),
+                              variables: MessageVariable.allCases.map { ($0, $0.value(rule: draft.rule, settings: store.settings)) }) {
                     aiDraftButton
                     Menu("Presets") {
                         ForEach(DialogPreset.allCases) { preset in
@@ -548,10 +582,44 @@ private struct RuleForm: View {
             }
             .padding(14)
             Divider()
+            infoButton
+                .padding(14)
+            Divider()
             windowOptions
                 .padding(14)
         }
         .card()
+    }
+
+    /// An optional "More Information" button that opens a local file or a web page.
+    private var infoButton: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            FieldLabel(title: "More-information button opens", key: "InfoButtonAction",
+                       subtitle: "Adds a button at the bottom left. Pressing it closes the dialog and opens a local file, an app or a web page.")
+            HStack {
+                TextField("More-information button opens", text: $draft.rule.infoButtonAction.orEmpty,
+                          prompt: Text("None (no button)"))
+                    .labelsHidden()
+                    .accessibilityLabel("InfoButtonAction")
+                Button("Choose File…") {
+                    if let url = FileDialogs.chooseFiles(types: [.item], message: "Choose the file the button opens on the managed Macs.").first {
+                        draft.rule.infoButtonAction = url.path
+                    }
+                }
+                .help("Pick a local file; its path must also exist on the managed Macs")
+            }
+            .controlSize(.small)
+            issueRows(for: .infoButtonAction)
+            HStack(spacing: 12) {
+                FieldLabel(title: "Button label", key: "InfoButtonText")
+                    .frame(width: 120, alignment: .leading)
+                TextField("Button label", text: $draft.rule.infoButtonText.orEmpty, prompt: Text(RuleModel.defaultInfoButtonText))
+                    .labelsHidden()
+                    .accessibilityLabel("InfoButtonText")
+                    .disabled(draft.rule.infoButtonAction == nil && draft.rule.infoButtonText == nil)
+            }
+            issueRows(for: .infoButtonText)
+        }
     }
 
     /// Size, position and behaviour of the dialog window. Every control maps "the default" to an absent key,
@@ -715,6 +783,8 @@ private struct RuleForm: View {
             "Driven by a unified-log line, about 0.25 s measured and no polling. Needs a log line that appears only when the user does the thing you want to block."
         case .watchOneKillAnother:
             "Polls the watched process but quits the other one, e.g. watch InternetAccountsSettingsExtension and quit System Settings. Quit the host app: quitting only an extension makes Settings show “Extension process exited”."
+        case .notifyOnly:
+            "Driven by a unified-log line like an event rule, but nothing is quit: the watcher only shows the dialog. Use it to explain something that is already enforced elsewhere (e.g. a DDM policy that blocks external storage)."
         }
     }
 }
@@ -726,14 +796,18 @@ private struct RuleForm: View {
 private struct MessageEditor<Accessory: View>: View {
     @Binding var message: String
     let hasError: Bool
+    /// The variables the watcher fills in, with their current values for the menu.
+    let variables: [(variable: MessageVariable, value: String)]
     @ViewBuilder let accessory: Accessory
     @State private var title: String
     @State private var text: String
     @State private var selection: TextSelection?
 
-    init(message: Binding<String>, hasError: Bool, @ViewBuilder accessory: () -> Accessory) {
+    init(message: Binding<String>, hasError: Bool, variables: [(variable: MessageVariable, value: String)],
+         @ViewBuilder accessory: () -> Accessory) {
         _message = message
         self.hasError = hasError
+        self.variables = variables
         self.accessory = accessory()
         let parts = DialogMessageParts.split(message.wrappedValue)
         _title = State(initialValue: parts.title)
@@ -766,7 +840,7 @@ private struct MessageEditor<Accessory: View>: View {
                     .overlay(RoundedRectangle(cornerRadius: 6)
                         .strokeBorder(hasError ? AnyShapeStyle(Color.red.opacity(0.5)) : AnyShapeStyle(.quaternary)))
                     .accessibilityLabel("Dialog message")
-                Text("Select text, then use the buttons above. The message is stored as Markdown; blank lines make paragraphs.")
+                Text("Select text, then use the buttons above. The message is stored as Markdown; blank lines make paragraphs. Variables such as {{companyName}} are filled in by the watcher (\(RuleModel.variablesAndInfoButtonMinimumWatcherVersion) or later); the preview shows their values.")
                     .font(.system(size: 11)).foregroundStyle(.secondary)
             }
         }
@@ -790,21 +864,40 @@ private struct MessageEditor<Accessory: View>: View {
             style("Heading", "textformat.size") { MarkdownStyling.toggleLinePrefix("## ", in: $0, range: $1) }
             style("Bulleted list", "list.bullet") { MarkdownStyling.toggleLinePrefix("- ", in: $0, range: $1) }
             style("Link", "link") { MarkdownStyling.link(in: $0, range: $1) }
+            Divider().frame(height: 14).padding(.horizontal, 4)
+            Menu {
+                ForEach(variables, id: \.variable) { entry in
+                    Button("\(entry.variable.token) — \(entry.variable.summary)\(entry.value.isEmpty ? "" : " (\(entry.value))")") {
+                        apply { MarkdownStyling.insert(entry.variable.token, in: $0, range: $1) }
+                    }
+                }
+            } label: {
+                Image(systemName: "curlybraces").frame(width: 24, height: 20).contentShape(Rectangle())
+            }
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .help("Insert a variable the watcher fills in when the dialog is shown")
+            .accessibilityLabel("Insert variable")
             Spacer()
         }
         .buttonStyle(.borderless)
     }
 
+    /// Runs a Markdown edit on the selection (or at the end of the text when nothing is selected).
+    private func apply(_ edit: (String, Range<String.Index>) -> MarkdownStyling.Edit) {
+        var range = text.endIndex..<text.endIndex
+        if case .selection(let selected) = selection?.indices, selected.upperBound <= text.endIndex {
+            range = selected
+        }
+        let result = edit(text, range)
+        text = result.text
+        selection = TextSelection(range: result.selection)
+    }
+
     private func style(_ name: String, _ symbol: String, shortcut: KeyEquivalent? = nil,
                        _ edit: @escaping (String, Range<String.Index>) -> MarkdownStyling.Edit) -> some View {
         Button {
-            var range = text.endIndex..<text.endIndex
-            if case .selection(let selected) = selection?.indices, selected.upperBound <= text.endIndex {
-                range = selected
-            }
-            let result = edit(text, range)
-            text = result.text
-            selection = TextSelection(range: result.selection)
+            apply(edit)
         } label: {
             Image(systemName: symbol).frame(width: 24, height: 20).contentShape(Rectangle())
         }

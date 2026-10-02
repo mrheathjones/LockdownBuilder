@@ -8,7 +8,8 @@ import Foundation
 struct RuleModel: Equatable, Hashable, Sendable {
     /// Lowercase kebab-case; becomes the last component of the preference domain / file name.
     var name: String
-    var killProcess: String
+    /// Required unless the rule has a `predicate`: an event rule without it is notify-only (dialog, no kill).
+    var killProcess: String?
     var dialogMessage: String
     var predicate: String?
     var watchProcess: String?
@@ -16,6 +17,11 @@ struct RuleModel: Equatable, Hashable, Sendable {
     var buttonText: String?
     var buttonAction: String?
     var dismissButtonText: String?
+    /// A "More Information" button (bottom left). It exists only with an action: an absolute path (a local
+    /// file or app) or a `scheme://…` URL, opened by the watcher when the button is pressed; the text
+    /// defaults to swiftDialog's "More Information".
+    var infoButtonText: String?
+    var infoButtonAction: String?
     /// Dialog window options. Absent means the watcher's default: swiftDialog's own size, centred,
     /// on top, moveable, no blur.
     var dialogWidth: Int?
@@ -45,7 +51,7 @@ struct RuleModel: Equatable, Hashable, Sendable {
 
     init(
         name: String,
-        killProcess: String,
+        killProcess: String? = nil,
         dialogMessage: String,
         predicate: String? = nil,
         watchProcess: String? = nil,
@@ -53,6 +59,8 @@ struct RuleModel: Equatable, Hashable, Sendable {
         buttonText: String? = nil,
         buttonAction: String? = nil,
         dismissButtonText: String? = nil,
+        infoButtonText: String? = nil,
+        infoButtonAction: String? = nil,
         dialogWidth: Int? = nil,
         dialogHeight: Int? = nil,
         dialogPosition: DialogPosition? = nil,
@@ -73,6 +81,8 @@ struct RuleModel: Equatable, Hashable, Sendable {
         self.buttonText = buttonText
         self.buttonAction = buttonAction
         self.dismissButtonText = dismissButtonText
+        self.infoButtonText = infoButtonText
+        self.infoButtonAction = infoButtonAction
         self.dialogWidth = dialogWidth
         self.dialogHeight = dialogHeight
         self.dialogPosition = dialogPosition
@@ -92,10 +102,12 @@ struct RuleModel: Equatable, Hashable, Sendable {
         case event
         /// Presence rule that polls `WatchProcess` but kills `KillProcess`.
         case watchOneKillAnother
+        /// Predicate present, no `KillProcess`: shows the dialog on a unified-log line and kills nothing.
+        case notifyOnly
     }
 
     var kind: Kind {
-        if predicate != nil { return .event }
+        if predicate != nil { return killProcess == nil ? .notifyOnly : .event }
         if watchProcess != nil { return .watchOneKillAnother }
         return .presence
     }
@@ -110,6 +122,31 @@ struct RuleModel: Equatable, Hashable, Sendable {
     ]
 
     static let defaultCooldownSeconds = 5
+    /// swiftDialog's own label for the info button, used when `InfoButtonText` is absent.
+    static let defaultInfoButtonText = "More Information"
+    /// The first watcher that accepts a rule without `KillProcess`; older watchers skip such a rule as invalid.
+    static let notifyOnlyMinimumWatcherVersion = "1.9"
+    /// The first watcher that fills in `{{…}}` message variables and shows the info button. Older watchers
+    /// show the tokens literally and ignore the info keys.
+    static let variablesAndInfoButtonMinimumWatcherVersion = "1.10"
+
+    /// The oldest watcher this rule works with, or nil when any version will do.
+    var requiredWatcherVersion: String? {
+        if infoButtonAction != nil || infoButtonText != nil || MessageVariables.usesVariables(dialogMessage) {
+            return Self.variablesAndInfoButtonMinimumWatcherVersion
+        }
+        return kind == .notifyOnly ? Self.notifyOnlyMinimumWatcherVersion : nil
+    }
+
+    /// "1.10" is newer than "1.9": compare version strings component by component.
+    static func isVersion(_ a: String, atLeast b: String) -> Bool {
+        let x = a.split(separator: ".").map { Int($0) ?? 0 }, y = b.split(separator: ".").map { Int($0) ?? 0 }
+        for i in 0..<max(x.count, y.count) {
+            let l = i < x.count ? x[i] : 0, r = i < y.count ? y[i] : 0
+            if l != r { return l > r }
+        }
+        return true
+    }
     /// Smallest dialog size that still fits the message and buttons.
     static let minimumDialogSize = 200
 
@@ -131,10 +168,14 @@ struct RuleModel: Equatable, Hashable, Sendable {
             add(.name, .error, .nameReserved, "“\(name)” is reserved for the watcher itself.")
         }
 
-        // KillProcess
-        if killProcess.isEmpty {
-            add(.killProcess, .error, .emptyString, "KillProcess is required.")
-        } else {
+        // KillProcess: optional only for event rules (a Predicate without it is notify-only).
+        if let killProcess, killProcess.isEmpty {
+            add(.killProcess, .error, .emptyString,
+                "KillProcess is empty. Enter a process name, or remove it for a notify-only event rule.")
+        } else if killProcess == nil, predicate == nil {
+            add(.killProcess, .error, .emptyString,
+                "KillProcess is required. Only an event rule (one with a Predicate) can leave it out to show the dialog without quitting anything.")
+        } else if let killProcess {
             if Self.killDenylist.contains(killProcess) {
                 add(.killProcess, .error, .killProcessDenylisted,
                     "“\(killProcess)” is on the safety denylist and can never be killed.")
@@ -149,6 +190,11 @@ struct RuleModel: Equatable, Hashable, Sendable {
             add(.dialogMessage, .error, .messageIllegalCharacters,
                 "DialogMessage contains control characters that cannot be stored in a plist.")
         }
+        let unknown = MessageVariables.unknownNames(in: dialogMessage)
+        if !unknown.isEmpty {
+            add(.dialogMessage, .warning, .unknownVariable,
+                "\(unknown.map { "{{\($0)}}" }.joined(separator: ", ")) isn't a variable the watcher knows (\(MessageVariable.allCases.map(\.token).joined(separator: ", "))); it will be shown as typed.")
+        }
 
         // Predicate / WatchProcess
         if let predicate, predicate.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -159,7 +205,7 @@ struct RuleModel: Equatable, Hashable, Sendable {
                 add(.watchProcess, .error, .emptyString, "WatchProcess is empty. Remove it or enter a process name.")
             } else {
                 Self.checkProcessName(watchProcess, field: .watchProcess, add: add)
-                if watchProcess == killProcess {
+                if let killProcess, watchProcess == killProcess {
                     add(.watchProcess, .warning, .watchProcessSameAsKill,
                         "WatchProcess equals KillProcess, so it has no effect. Remove it.")
                 }
@@ -189,6 +235,21 @@ struct RuleModel: Equatable, Hashable, Sendable {
                 issues.append(contentsOf: Self.buttonActionIssues(buttonAction))
             }
         }
+        if let infoButtonAction {
+            if infoButtonAction.isEmpty {
+                add(.infoButtonAction, .error, .emptyString, "InfoButtonAction is empty. Remove it, or enter an absolute path or scheme://… URL.")
+            } else {
+                issues.append(contentsOf: Self.buttonActionIssues(infoButtonAction, field: .infoButtonAction))
+            }
+        }
+        if let infoButtonText {
+            if infoButtonText.isEmpty {
+                add(.infoButtonText, .error, .emptyString, "InfoButtonText is empty. Remove it to use “\(Self.defaultInfoButtonText)”.")
+            } else if infoButtonAction == nil {
+                add(.infoButtonText, .error, .infoButtonTextWithoutAction,
+                    "InfoButtonText needs an InfoButtonAction: the button only exists when there is something to open.")
+            }
+        }
 
         // Dialog window
         if let dialogWidth, dialogWidth < Self.minimumDialogSize {
@@ -206,22 +267,22 @@ struct RuleModel: Equatable, Hashable, Sendable {
 
     // MARK: Helpers
 
-    /// ButtonAction must be an absolute path (`^/…`) or a `scheme://…` URL; `file://` is refused;
-    /// control characters are refused.
-    static func buttonActionIssues(_ value: String) -> [ValidationIssue] {
+    /// ButtonAction and InfoButtonAction must be an absolute path (`^/…`) or a `scheme://…` URL; `file://` is
+    /// refused; control characters are refused.
+    static func buttonActionIssues(_ value: String, field: RuleField = .buttonAction) -> [ValidationIssue] {
         var out: [ValidationIssue] = []
         func add(_ code: ValidationCode, _ message: String) {
-            out.append(ValidationIssue(field: .buttonAction, severity: .error, code: code, message: message))
+            out.append(ValidationIssue(field: field, severity: .error, code: code, message: message))
         }
         if value.unicodeScalars.contains(where: { $0.properties.generalCategory == .control }) {
-            add(.buttonActionControlCharacters, "ButtonAction must not contain control characters (including newlines and tabs).")
+            add(.buttonActionControlCharacters, "\(field.rawValue) must not contain control characters (including newlines and tabs).")
         }
         if value.lowercased().hasPrefix("file:") {
             add(.buttonActionFileScheme, "file:// URLs are refused. Use an absolute path such as /Applications/Self Service.app instead.")
         } else if value.hasPrefix("/") {
             // absolute path: fine
         } else if value.wholeMatch(of: /[A-Za-z][A-Za-z0-9+.\-]*:\/\/\S.*/) == nil {
-            add(.buttonActionInvalid, "ButtonAction must be an absolute path (starting with /) or a scheme://… URL.")
+            add(.buttonActionInvalid, "\(field.rawValue) must be an absolute path (starting with /) or a scheme://… URL.")
         }
         return out
     }

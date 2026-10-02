@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 /// An approximation of how swiftDialog renders the watcher's dialog: banner (or org title), icon, Markdown
-/// message and one or two buttons. It is laid out at the dialog's real point size and scaled to the space
+/// message (with its variables filled in) and one, two or three buttons. It is laid out at the dialog's real point size and scaled to the space
 /// available, so the rule's width and height (and the banner and icon sizes) show in proportion.
 /// "Live Preview" and "Simulate dialog" show the real thing.
 struct DialogPreviewView: View {
@@ -34,7 +34,7 @@ struct DialogPreviewView: View {
     }
 
     private var dialog: some View {
-        let document = DialogMarkdown.parse(rule.dialogMessage)
+        let document = DialogMarkdown.parse(MessageVariables.expand(rule.dialogMessage, rule: rule, settings: settings))
         return VStack(spacing: 0) {
             header
             HStack(alignment: .top, spacing: 28) {
@@ -57,6 +57,9 @@ struct DialogPreviewView: View {
             .frame(maxHeight: .infinity, alignment: .top)
             .clipped()
             HStack(spacing: 12) {
+                if rule.infoButtonAction != nil {
+                    fakeButton(rule.infoButtonText ?? RuleModel.defaultInfoButtonText, prominent: false)
+                }
                 Spacer()
                 if let dismiss = rule.dismissButtonText {
                     fakeButton(dismiss, prominent: false)

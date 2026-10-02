@@ -91,10 +91,21 @@ final class ProjectStore {
         case .event where draft.rule.predicate == nil:
             out.append(ValidationIssue(field: .predicate, severity: .error, code: .emptyString,
                                        message: "Enter the log predicate for this event rule."))
+        case .notifyOnly where draft.rule.predicate == nil:
+            // Without a predicate the model already reports the missing KillProcess, which this type never has.
+            out.removeAll { $0.field == .killProcess }
+            out.append(ValidationIssue(field: .predicate, severity: .error, code: .emptyString,
+                                       message: "Enter the log predicate for this notify-only rule."))
         case .watchOneKillAnother where draft.rule.watchProcess == nil:
             out.append(ValidationIssue(field: .watchProcess, severity: .error, code: .emptyString,
                                        message: "Enter the process to watch."))
         default: break
+        }
+        // An event rule whose KillProcess was cleared is valid on its own (it is notify-only), but not what
+        // the author chose here.
+        if draft.mode == .event, draft.rule.killProcess == nil, draft.rule.predicate != nil {
+            out.append(ValidationIssue(field: .killProcess, severity: .error, code: .emptyString,
+                                       message: "Enter the process to quit, or choose Notify Only to show the dialog without quitting anything."))
         }
         if let collision = RuleModel.collisionIssues(among: drafts.map(\.rule.name))[draft.rule.name] {
             out.append(collision)
@@ -115,7 +126,7 @@ final class ProjectStore {
 
     @discardableResult
     func newRule(from rule: RuleModel? = nil) -> UUID {
-        var base = rule ?? RuleModel(name: "new-rule", killProcess: "", dialogMessage: "# Title\n\nMessage for the user.")
+        var base = rule ?? RuleModel(name: "new-rule", dialogMessage: "# Title\n\nMessage for the user.")
         let taken = Set(drafts.map { $0.rule.name.lowercased() })
         var candidate = base.name, n = 2
         while taken.contains(candidate) { candidate = "\(base.name)-\(n)"; n += 1 }

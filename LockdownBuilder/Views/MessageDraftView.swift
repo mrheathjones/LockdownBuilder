@@ -12,7 +12,7 @@ struct MessageDraftView: View {
         self.rule = rule
         self.settings = settings
         self.onUse = onUse
-        _model = State(initialValue: MessageDraftModel(intent: rule.killProcess.isEmpty ? "" : "\(rule.killProcess) is blocked"))
+        _model = State(initialValue: MessageDraftModel(intent: rule.killProcess.map { "\($0) is blocked" } ?? ""))
     }
 
     var body: some View {
@@ -77,6 +77,6 @@ struct MessageDraftView: View {
 
     private func generate() {
         guard model.canGenerate else { return }
-        model.generate(using: assistant, appName: rule.killProcess, org: settings.orgNameFriendly)
+        model.generate(using: assistant, appName: rule.killProcess ?? "", org: settings.orgNameFriendly)
     }
 }

@@ -82,6 +82,26 @@ struct ProjectStoreTests {
         #expect(store.issues(for: store.drafts[index]).contains { $0.field == .watchProcess && $0.isError })
     }
 
+    @Test func notifyOnlyModeNeedsAPredicateAndNoKillProcess() throws {
+        let id = store.newRule()
+        let index = try #require(store.drafts.firstIndex { $0.id == id })
+        store.drafts[index].mode = .notifyOnly
+        // Only the predicate is asked for; KillProcess is not part of this rule type.
+        #expect(store.issues(for: store.drafts[index]).map(\.field) == [.predicate])
+        store.drafts[index].rule.predicate = #"process == "X""#
+        #expect(!store.hasErrors(store.drafts[index]))
+        // The same data under "Event" is missing its process to quit.
+        store.drafts[index].mode = .event
+        #expect(store.issues(for: store.drafts[index]).map(\.field) == [.killProcess])
+    }
+
+    @Test func aDuplicatedNotifyOnlyTemplateOpensInNotifyOnlyMode() throws {
+        store.duplicateTemplate(id: "usb-block")
+        let draft = try #require(store.drafts.last)
+        #expect(draft.mode == .notifyOnly)
+        #expect(!store.hasErrors(draft))
+    }
+
     @Test func settingsPersistPerDefaultsSuite() throws {
         let suite = "ProjectStoreTests.persist.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suite))

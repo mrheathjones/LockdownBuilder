@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CooldownSeconds</key>
+	<integer>10</integer>
+	<key>DialogMessage</key>
+	<string># External storage is blocked
+
+External drives and other removable storage can't be used on this Mac.
+
+This is a policy of {{companyName}}. If you believe you need access, please contact the Service Desk.</string>
+	<key>Predicate</key>
+	<string>process == "diskarbitrationd" AND subsystem == "com.apple.DiskArbitration.diskarbitrationd" AND eventMessage BEGINSWITH "unable to mount" AND eventMessage CONTAINS "status code 0x00000001"</string>
+</dict>
+</plist>

@@ -17,7 +17,7 @@
     },
     "CooldownSeconds" : {
       "default" : 5,
-      "description" : "Dialog rate limit only; the kill happens every time.",
+      "description" : "Dialog rate limit only; the kill (if the rule has a KillProcess) happens every time.",
       "minimum" : 0,
       "title" : "Dialog cooldown (seconds)",
       "type" : "integer"
@@ -34,7 +34,7 @@
       "type" : "integer"
     },
     "DialogMessage" : {
-      "description" : "swiftDialog Markdown. Start with “# Title” for a large bold title. Real newlines and blank lines make paragraphs.",
+      "description" : "swiftDialog Markdown. Start with “# Title” for a large bold title. Real newlines and blank lines make paragraphs. Variables filled in by the watcher (1.10 or later): {{companyName}}, {{ruleName}}, {{killProcess}}.",
       "minLength" : 1,
       "title" : "Dialog message",
       "type" : "string"
@@ -112,14 +112,27 @@
       "title" : "Dismiss button label",
       "type" : "string"
     },
+    "InfoButtonAction" : {
+      "description" : "Adds a “More Information” button (bottom left) that opens this when pressed: an absolute path (a local file or app) or a scheme://… URL. file:// is refused. Watcher 1.10 or later.",
+      "pattern" : "^(/|(?![Ff][Ii][Ll][Ee]:)[A-Za-z][A-Za-z0-9+.-]*://[^\\s]).*$",
+      "title" : "More-information button action",
+      "type" : "string"
+    },
+    "InfoButtonText" : {
+      "default" : "More Information",
+      "description" : "Label for the button added by InfoButtonAction.",
+      "minLength" : 1,
+      "title" : "More-information button label",
+      "type" : "string"
+    },
     "KillProcess" : {
-      "description" : "Exact process name (pgrep -x / pkill -x). Full names match and may contain spaces, e.g. System Settings.",
+      "description" : "Exact process name (pgrep -x / pkill -x). Full names match and may contain spaces, e.g. System Settings. Required unless Predicate is set: a rule with a Predicate and no KillProcess only shows the dialog and quits nothing (watcher 1.9 or later).",
       "minLength" : 1,
       "title" : "Process to kill",
       "type" : "string"
     },
     "Predicate" : {
-      "description" : "Present: event-driven rule. Absent: presence rule, polled every 0.5 s.",
+      "description" : "Present: event-driven rule. Absent: presence rule, polled every 0.5 s (KillProcess is then required).",
       "minLength" : 1,
       "title" : "Unified-log predicate",
       "type" : "string"
@@ -132,7 +145,6 @@
     }
   },
   "required" : [
-    "KillProcess",
     "DialogMessage"
   ],
   "title" : "com.company.restrict.<rule-name>",

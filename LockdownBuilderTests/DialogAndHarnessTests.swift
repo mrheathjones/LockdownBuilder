@@ -9,7 +9,7 @@ struct DialogCommandTests {
         let args = DialogCommand.arguments(for: appStore, settings: RuleSettings())
         #expect(args == [
             "--height", "500",
-            "--message", appStore.dialogMessage,
+            "--message", appStore.dialogMessage.replacingOccurrences(of: "{{companyName}}", with: "Company Name"),
             "--button1text", "Self Service",
             "--icon", DialogCommand.defaultIcon,
             "--ontop", "--moveable",
@@ -76,15 +76,18 @@ struct DialogMarkdownTests {
 struct DialogPresetTests {
     @Test(arguments: DialogPreset.allCases)
     func presetsProduceValidTitledMessages(preset: DialogPreset) {
-        let message = preset.message(appName: "Freeform", org: "Acme")
+        let message = preset.message(appName: "Freeform")
         var rule = TestSupport.validRule(); rule.dialogMessage = message
-        #expect(rule.isValid)
+        #expect(rule.validate().isEmpty)
         #expect(DialogMarkdown.parse(message).title != nil)
-        #expect(message.contains("Acme"))
+        // The company name is a variable, filled in by the watcher.
+        #expect(message.contains("{{companyName}}"))
+        var acme = RuleSettings(); acme.orgNameFriendly = "Acme"
+        #expect(MessageVariables.expand(message, rule: rule, settings: acme).contains("Acme"))
     }
 
     @Test func emptyAppNameFallsBack() {
-        #expect(DialogPreset.appBlocked.message(appName: " ", org: "Acme").hasPrefix("# This app Blocked"))
+        #expect(DialogPreset.appBlocked.message(appName: " ").hasPrefix("# This app Blocked"))
     }
 }
 
@@ -96,6 +99,17 @@ struct DryRunTests {
         #expect(steps[0].contains("IMKClient subclass"))
         #expect(steps.contains { $0.contains("pkill -x") && $0.contains("System Settings") })
         #expect(steps.contains { $0.contains("/Library/Managed Preferences/com.company.restrict.apple-account.plist") })
+    }
+
+    @Test func notifyOnlyRuleSaysNothingIsKilled() {
+        let steps = DryRun.steps(for: BuiltInTemplates.usbBlock.rule(settings: settings), settings: settings)
+        #expect(steps[0].contains("unable to mount"))
+        #expect(steps.contains { $0.contains("Shows the dialog; nothing is killed") && $0.contains("once every 10 s") })
+        #expect(!steps.contains { $0.contains("pkill") || $0.contains("pgrep") })
+        // The template also uses {{companyName}}, so the newer of the two minimums is named.
+        #expect(steps.contains { $0.contains("Watcher \(RuleModel.variablesAndInfoButtonMinimumWatcherVersion) or later") && $0.contains("skip a rule without KillProcess") })
+        var plain = BuiltInTemplates.usbBlock.rule(settings: settings); plain.dialogMessage = "# Blocked"
+        #expect(DryRun.steps(for: plain, settings: settings).contains { $0.contains("Watcher \(RuleModel.notifyOnlyMinimumWatcherVersion) or later") })
     }
 
     @Test func presenceRuleWarnsAboutShortLivedProcesses() {
@@ -245,6 +259,21 @@ struct ProcessRunnerTests {
         #expect(!model.canLiveKill)
     }
 
+    @MainActor
+    @Test func aRuleWithoutKillProcessCanNeverBeLiveKilled() async {
+        let rule = BuiltInTemplates.usbBlock.rule(settings: RuleSettings())
+        let model = TestHarnessModel(rule: rule, settings: RuleSettings())
+        #expect(model.killBlockedReason?.contains("nothing is killed") == true)
+        #expect(!model.canLiveKill)   // an empty confirmation must not "match" the missing name
+        await model.liveKill()
+        #expect(model.killResult == nil)
+        await model.refreshMatches()
+        #expect(model.killMatches == nil && model.matchError == nil)
+        // Simulate Dialog is unchanged: the same flags as any other rule.
+        #expect(DialogCommand.arguments(for: rule, settings: RuleSettings()).starts(with: [
+            "--height", "500", "--message", MessageVariables.expand(rule.dialogMessage, rule: rule, settings: RuleSettings())]))
+    }
+
     /// Starts /bin/sleep through a uniquely named symlink; the process name (what pgrep -x sees) is the link name.
     /// (A copied platform binary is SIGKILLed by code-signing enforcement, so a symlink is used instead.)
     private func startSleeper() throws -> (String, Process) {
@@ -281,12 +310,38 @@ struct DialogLiveUpdateTests {
         #expect(DialogLiveUpdate.commands(from: base, to: renamed, oldSettings: settings, newSettings: settings) == ["button2text: Close"])
     }
 
+    @Test func aChangedCompanyNameUpdatesAMessageThatUsesTheVariable() {
+        var rule = base; rule.dialogMessage = "# Hi\n\nPolicy of {{companyName}}."
+        var acme = settings; acme.orgNameFriendly = "Acme"
+        let lines = DialogLiveUpdate.commands(from: rule, to: rule, oldSettings: settings, newSettings: acme)
+        #expect(lines == ["title: Acme", #"message: # Hi\n\nPolicy of Acme."#])
+        var renamed = rule; renamed.name = "other"
+        #expect(DialogLiveUpdate.commands(from: rule, to: renamed, oldSettings: settings, newSettings: settings).isEmpty)
+        renamed.dialogMessage = "# {{ruleName}}"
+        #expect(DialogLiveUpdate.commands(from: rule, to: renamed, oldSettings: settings, newSettings: settings) == ["message: # other"])
+    }
+
+    @Test func addingTheInfoButtonRelaunchesAndIsAFlag() {
+        var rule = base; rule.infoButtonAction = "https://example.com/policy"
+        #expect(DialogLiveUpdate.needsRelaunch(from: base, to: rule, oldSettings: settings, newSettings: settings))
+        var args = DialogCommand.arguments(for: rule, settings: settings)
+        #expect(args.firstIndex(of: "--infobuttontext").map { args[$0 + 1] } == "More Information")
+        rule.infoButtonText = "Why?"
+        args = DialogCommand.arguments(for: rule, settings: settings)
+        #expect(args.firstIndex(of: "--infobuttontext").map { args[$0 + 1] } == "Why?")
+        #expect(!args.contains("--infobuttonaction"))   // the watcher opens it on exit code 3, not swiftDialog
+        #expect(DialogCommand.describeExit(3, rule: rule) == "“Why?” pressed. The watcher would now open https://example.com/policy.")
+        #expect(!DialogCommand.arguments(for: base, settings: settings).contains("--infobuttontext"))
+    }
+
     @Test func orgTitleChangesOnlyWithoutABanner() {
+        // A message without the variable: only the title line follows the company name.
+        var plain = base; plain.dialogMessage = "# Plain"
         var org = settings; org.orgNameFriendly = "Acme"
-        #expect(DialogLiveUpdate.commands(from: base, to: base, oldSettings: settings, newSettings: org) == ["title: Acme"])
+        #expect(DialogLiveUpdate.commands(from: plain, to: plain, oldSettings: settings, newSettings: org) == ["title: Acme"])
         var bannered = settings; bannered.bannerImagePath = "/b.png"
         var bannerOrg = bannered; bannerOrg.orgNameFriendly = "Acme"
-        #expect(DialogLiveUpdate.commands(from: base, to: base, oldSettings: bannered, newSettings: bannerOrg).isEmpty)
+        #expect(DialogLiveUpdate.commands(from: plain, to: plain, oldSettings: bannered, newSettings: bannerOrg).isEmpty)
     }
 
     @Test func addingOrRemovingButton2OrTheBannerNeedsARelaunch() {

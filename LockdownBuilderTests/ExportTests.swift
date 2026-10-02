@@ -49,7 +49,8 @@ struct PlistWriterTests {
         let rule = RuleModel(
             name: "app-store", killProcess: "App Store", dialogMessage: "# T\n\nBody & more",
             predicate: nil, watchProcess: "Other", cooldownSeconds: 12,
-            buttonText: "Self Service", buttonAction: "/Applications/Self Service.app", dismissButtonText: "Done")
+            buttonText: "Self Service", buttonAction: "/Applications/Self Service.app", dismissButtonText: "Done",
+            infoButtonText: "Policy", infoButtonAction: "https://example.com/policy")
         let result = RuleImporter.importRule(data: Data(RuleExport.plist(for: rule).utf8), name: "app-store")
         #expect(result.rule == rule)
         #expect(result.issues.isEmpty)
@@ -66,7 +67,7 @@ struct PlistWriterTests {
     }
 
     @Test func builtInTemplatesAreValidAndMatchTheirIds() {
-        #expect(BuiltInTemplates.all.map(\.id) == ["apple-account", "internet-accounts", "freeform", "facetime", "phone", "app-store", "fm"])
+        #expect(BuiltInTemplates.all.map(\.id) == ["apple-account", "internet-accounts", "freeform", "facetime", "phone", "app-store", "fm", "usb-block"])
         for template in BuiltInTemplates.all {
             let rule = template.rule(settings: settings)
             #expect(rule.name == template.id)
@@ -88,10 +89,50 @@ struct PlistWriterTests {
         #expect(BuiltInTemplates.fm.rule(settings: settings).killProcess == "fm")
     }
 
-    @Test func templatesUseTheConfiguredOrganisationName() {
+    @Test func usbBlockTemplateIsNotifyOnlyWithTheDocumentedValues() throws {
+        let rule = BuiltInTemplates.usbBlock.rule(settings: settings)
+        #expect(rule.kind == .notifyOnly)
+        #expect(rule.killProcess == nil)
+        #expect(rule.predicate == #"process == "diskarbitrationd" AND subsystem == "com.apple.DiskArbitration.diskarbitrationd" AND eventMessage BEGINSWITH "unable to mount" AND eventMessage CONTAINS "status code 0x00000001""#)
+        #expect(rule.cooldownSeconds == 10)
+        #expect(rule.dialogMessage.hasPrefix("# External storage is blocked\n"))
+        #expect(Set(RuleExport.plistDictionary(for: rule).keys) == ["DialogMessage", "Predicate", "CooldownSeconds"])
+    }
+
+    @Test func notifyOnlyRuleExportsWithoutAKillProcessKey() throws {
+        let rule = RuleModel(name: "notice", dialogMessage: "# Hi", predicate: #"process == "X""#)
+        let plist = RuleExport.plist(for: rule), profile = RuleExport.mobileconfig(for: rule, settings: settings)
+        for xml in [plist, profile] {
+            #expect(!xml.contains("KillProcess"))
+            #expect(!xml.contains("<string></string>"))
+            #expect(try TestSupport.lint(xml).status == 0)
+        }
+        let result = RuleImporter.importRule(data: Data(plist.utf8), name: "notice")
+        #expect(result.rule == rule)
+        #expect(result.issues.isEmpty)
+    }
+
+    /// Templates carry the `{{companyName}}` variable, so the exported plist never bakes the name in.
+    @Test func templatesUseTheCompanyNameVariable() {
         var custom = settings; custom.orgNameFriendly = "Acme Corp"
-        let rule = BuiltInTemplates.freeform.rule(settings: custom)
-        #expect(rule.dialogMessage.contains("Acme Corp"))
+        for template in BuiltInTemplates.all {
+            let rule = template.rule(settings: custom)
+            #expect(rule.dialogMessage.contains("{{companyName}}"), "\(template.id)")
+            #expect(!rule.dialogMessage.contains("Acme Corp"), "\(template.id)")
+            #expect(MessageVariables.expand(rule.dialogMessage, rule: rule, settings: custom).contains("Acme Corp"), "\(template.id)")
+            #expect(rule.requiredWatcherVersion == RuleModel.variablesAndInfoButtonMinimumWatcherVersion, "\(template.id)")
+        }
+    }
+
+    @Test func infoButtonKeysRoundTripAndAreOmittedWhenAbsent() throws {
+        var rule = TestSupport.validRule()
+        #expect(!RuleExport.plist(for: rule).contains("InfoButton"))
+        rule.infoButtonAction = "/Library/Docs/policy.pdf"; rule.infoButtonText = "Read the policy"
+        let xml = RuleExport.plist(for: rule)
+        #expect(xml.contains("<key>InfoButtonAction</key>\n\t<string>/Library/Docs/policy.pdf</string>"))
+        #expect(xml.contains("<key>InfoButtonText</key>\n\t<string>Read the policy</string>"))
+        let result = RuleImporter.importRule(data: Data(xml.utf8), name: rule.name)
+        #expect(result.rule == rule && result.issues.isEmpty)
     }
 }
 
@@ -118,6 +159,13 @@ struct GoldenSamplesTests {
         try check(RuleExport.plist(for: rule), fileName: settings.fileName(for: id))
     }
 
+    /// The notify-only template is also kept as a profile, the form Publish to Jamf Pro sends.
+    @Test func usbBlockMobileconfigMatchesGoldenFile() throws {
+        let rule = BuiltInTemplates.usbBlock.rule(settings: settings)
+        try check(RuleExport.mobileconfig(for: rule, settings: settings),
+                  fileName: "\(settings.ruleDomain(for: rule.name)).mobileconfig")
+    }
+
     @Test func schemaMatchesGoldenFile() throws {
         try check(RuleExport.jsonSchema(settings: settings), fileName: TestSupport.schemaFileName)
     }
@@ -128,12 +176,38 @@ struct SchemaTests {
         let json = RuleExport.jsonSchema(settings: RuleSettings())
         let object = try #require(JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any])
         #expect(object["$schema"] as? String == "http://json-schema.org/draft-04/schema#")
-        #expect(object["required"] as? [String] == ["KillProcess", "DialogMessage"])
+        // KillProcess is optional for event rules; the app and the watcher enforce "KillProcess or Predicate".
+        #expect(object["required"] as? [String] == ["DialogMessage"])
+        #expect(object["anyOf"] == nil)
         let properties = try #require(object["properties"] as? [String: Any])
         #expect(Set(properties.keys) == RuleImporter.knownKeys)
         let cooldown = try #require(properties["CooldownSeconds"] as? [String: Any])
         #expect(cooldown["type"] as? String == "integer")
         #expect(cooldown["minimum"] as? Int == 0)
+    }
+
+    /// Every checked-in sample rule, including the notify-only one, passes the checked-in schema.
+    @Test(arguments: BuiltInTemplates.all.map(\.id))
+    func sampleValidatesAgainstTheSchema(id: String) throws {
+        let settings = RuleSettings()
+        let schemaData = try Data(contentsOf: TestSupport.samplesDirectory.appendingPathComponent(TestSupport.schemaFileName))
+        let schema = try #require(JSONSerialization.jsonObject(with: schemaData) as? [String: Any])
+        let sample = try Data(contentsOf: TestSupport.samplesDirectory.appendingPathComponent(settings.fileName(for: id)))
+        let rule = try #require(PropertyListSerialization.propertyList(from: sample, format: nil) as? [String: Any])
+        #expect(TestSupport.schemaViolations(rule, schema: schema) == [])
+    }
+
+    @Test func theSchemaCheckCatchesBadRules() throws {
+        let json = RuleExport.jsonSchema(settings: RuleSettings())
+        let schema = try #require(JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any])
+        #expect(TestSupport.schemaViolations(["Predicate": "p", "DialogMessage": "m"], schema: schema).isEmpty)
+        #expect(!TestSupport.schemaViolations(["Predicate": "p"], schema: schema).isEmpty)
+        #expect(!TestSupport.schemaViolations(["KillProcess": "", "DialogMessage": "m"], schema: schema).isEmpty)
+        #expect(!TestSupport.schemaViolations(["DialogMessage": "m", "Colour": "blue"], schema: schema).isEmpty)
+        #expect(!TestSupport.schemaViolations(["DialogMessage": "m", "CooldownSeconds": -1], schema: schema).isEmpty)
+        #expect(!TestSupport.schemaViolations(["DialogMessage": "m", "DialogPosition": "middle"], schema: schema).isEmpty)
+        #expect(!TestSupport.schemaViolations(["DialogMessage": "m", "InfoButtonAction": "file:///x"], schema: schema).isEmpty)
+        #expect(TestSupport.schemaViolations(["DialogMessage": "m", "InfoButtonAction": "/x", "InfoButtonText": "t"], schema: schema).isEmpty)
     }
 
     @Test func buttonActionPatternAgreesWithTheValidator() throws {

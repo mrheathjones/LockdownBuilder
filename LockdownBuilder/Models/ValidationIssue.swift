@@ -11,6 +11,8 @@ enum RuleField: String, Sendable, CaseIterable {
     case buttonText = "ButtonText"
     case buttonAction = "ButtonAction"
     case dismissButtonText = "DismissButtonText"
+    case infoButtonText = "InfoButtonText"
+    case infoButtonAction = "InfoButtonAction"
     case dialogWidth = "DialogWidth"
     case dialogHeight = "DialogHeight"
     case dialogPosition = "DialogPosition"
@@ -40,7 +42,8 @@ enum ValidationCode: String, Sendable {
     case cooldownNegative
     case dialogSizeTooSmall, dialogPositionUnknown, dialogChoiceUnknown
     case buttonActionInvalid, buttonActionFileScheme, buttonActionControlCharacters
-    case messageIllegalCharacters
+    case infoButtonTextWithoutAction
+    case messageIllegalCharacters, unknownVariable
     case plistUnreadable
 }
 
