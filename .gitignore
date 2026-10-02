@@ -7,3 +7,11 @@ DerivedData/
 *.app
 .swiftpm/
 .build/
+
+# Local working notes and AI-agent state: never published
+JOURNAL.md
+CLAUDE.md
+CLAUDE.local.md
+.claude/
+memory/
+*.memory.md

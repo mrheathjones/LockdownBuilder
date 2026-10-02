@@ -5,8 +5,7 @@ A native macOS app for authoring, validating, testing and exporting rule files f
 `.plist`, ready for Jamf *Application & Custom Settings → Upload*.
 
 > **Status:** feature-complete per the original brief: rule editor, validation, exports, dialog designer, test harness,
-> target picker, predicate discovery and optional on-device Apple Intelligence help. See [JOURNAL.md](JOURNAL.md).
-> See [JOURNAL.md](JOURNAL.md) for decisions and progress.
+> target picker, predicate discovery and optional on-device Apple Intelligence help.
 
 ## Add a rule in 2 minutes
 
