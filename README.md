@@ -7,6 +7,15 @@ A native macOS app for authoring, validating, testing and exporting rule files f
 > **Status:** feature-complete per the original brief: rule editor, validation, exports, dialog designer, test harness,
 > target picker, predicate discovery and optional on-device Apple Intelligence help.
 
+## Screenshots
+
+![The rule editor: three steps on the left, a live dialog preview on the right](Screenshots/rule-editor.png)
+
+| | |
+|---|---|
+| ![Home: start a rule from scratch, a folder, or a template](Screenshots/home.png) | ![Dialog options: buttons, window size, position and message alignment](Screenshots/dialog-options.png) |
+| ![The generated .mobileconfig, ready to export or publish to Jamf Pro](Screenshots/mobileconfig-preview.png) | ![Settings: build the watcher installer and upload it to Jamf Pro](Screenshots/settings-watcher.png) |
+
 ## Add a rule in 2 minutes
 
 1. **⌘N** for a new rule (or pick a built-in template and click **Duplicate to Edit**). Give it a kebab-case name.
