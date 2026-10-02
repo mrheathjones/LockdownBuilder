@@ -4,8 +4,9 @@ A native macOS app for authoring, validating, testing and exporting rule files f
 (a Jamf-deployed LaunchDaemon that kills a process and shows a swiftDialog message). The output is a correct rule
 `.plist`, ready for Jamf *Application & Custom Settings → Upload*.
 
-> **Status: phase 1 of 3.** The rule model, validation, plist / JSON-schema / `.mobileconfig` writers, importer and the
-> built-in template library are done and tested. The editor UI, predicate discovery and test harness are next.
+> **Status: in progress.** Rule model, validation, writers, importer, templates and the editor UI (rule list, form,
+> live preview, settings, open/save/import/export) are done. Dialog designer, test harness, target picker and predicate
+> discovery are next.
 > See [JOURNAL.md](JOURNAL.md) for decisions and progress.
 
 ## Rule format
@@ -44,6 +45,16 @@ Warnings are treated as errors. To regenerate `Samples/` after an intentional ou
 ```bash
 TEST_RUNNER_UPDATE_SAMPLES=1 xcodebuild -project LockdownBuilder.xcodeproj -scheme LockdownBuilder -destination 'platform=macOS' test
 ```
+
+## Keyboard shortcuts
+
+| Shortcut | Action |
+|---|---|
+| ⌘N | New rule |
+| ⌘O | Open a folder of rule plists |
+| ⇧⌘I | Import (and validate) plists |
+| ⌘S | Save all rules to the folder |
+| ⌘E / ⇧⌘E | Export the selected rule as .plist / .mobileconfig |
 
 ## Why it is not sandboxed
 

@@ -8,6 +8,8 @@ struct RuleSettings: Equatable, Codable, Sendable {
     var preference = "restrict"
     /// Used in generated message text, e.g. "Company Name".
     var orgNameFriendly = "Company Name"
+    /// Where open/save/export panels start. Empty means "no preference".
+    var defaultOutputFolder = ""
 
     /// `<ORG_PLIST_DOMAIN>.<PREFERENCE>.<rule-name>`
     func ruleDomain(for ruleName: String) -> String {
