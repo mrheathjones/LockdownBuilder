@@ -35,6 +35,7 @@ If you'd rather not run an un-notarised package, build from source (see [Build](
 |---|---|
 | ![Home: start a rule from scratch, a folder, or a template](Screenshots/home.png) | ![The usb-block template page with its notes and the values it carries](Screenshots/template-usb-block.png) |
 | ![Dialog options: message with a {{companyName}} variable, buttons, and the More Information button](Screenshots/dialog-options.png) | ![The generated .mobileconfig, ready to export or publish to Jamf Pro](Screenshots/mobileconfig-preview.png) |
+| ![Settings → Dialog: the message presets with Edit, Duplicate and Remove, New Preset and Restore Built-in Presets](Screenshots/settings-dialog-presets.png) | ![The preset editor: name, title and message with {{appName}}, the styling toolbar and a preview](Screenshots/preset-editor.png) |
 | ![Settings: build the watcher installer and upload it to Jamf Pro](Screenshots/settings-watcher.png) | |
 
 ## What's new in 1.3
