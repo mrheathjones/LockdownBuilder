@@ -88,7 +88,7 @@ private struct RuleForm: View {
 
             Section("What to kill") {
                 HStack(alignment: .firstTextBaseline) {
-                    field("KillProcess", .killProcess, prompt: "System Settings", text: $draft.rule.killProcess)
+                    field("KillProcess", .killProcess, prompt: "e.g. System Settings", text: $draft.rule.killProcess)
                     Button("Choose…") { pickingTarget = true }
                         .help("Pick a running process, drop an app, or enter a command-line path")
                 }
@@ -131,7 +131,7 @@ private struct RuleForm: View {
                           text: $draft.rule.predicate.orEmpty, axis: .vertical, monospaced: true)
                     predicateTools
                 case .watchOneKillAnother:
-                    field("WatchProcess", .watchProcess, prompt: "InternetAccountsSettingsExtension",
+                    field("WatchProcess", .watchProcess, prompt: "e.g. InternetAccountsSettingsExtension",
                           text: $draft.rule.watchProcess.orEmpty)
                     if let watch = draft.rule.watchProcess, !watch.contains("/") {
                         ProcessStatusLabel(name: watch)
