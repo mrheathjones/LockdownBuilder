@@ -95,6 +95,12 @@ struct WatcherInstallerTests {
         }
     }
 
+    /// The bundled template is published with the app, so it carries no personal name either.
+    @Test func theBundledTemplateNamesTheAppAsAuthor() {
+        let authors = template.components(separatedBy: "\n").filter { $0.hasPrefix("# Author:") }
+        #expect(authors == ["# Author: LockdownBuilder", "# Author: LockdownBuilder"])
+    }
+
     @Test func readsTheInstallerVersion() {
         #expect(WatcherInstaller.version(of: template) == "1.7")
     }
