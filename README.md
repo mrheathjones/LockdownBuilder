@@ -4,9 +4,26 @@ A native macOS app for authoring, validating, testing and exporting rule files f
 (a Jamf-deployed LaunchDaemon that kills a process and shows a swiftDialog message). The output is a correct rule
 `.plist`, ready for Jamf *Application & Custom Settings → Upload*.
 
-> **Status: in progress.** Rule model, validation, writers, importer, templates, the editor UI, dialog designer and the
-> local test harness are done. Target picker, predicate discovery and the optional Foundation Models features are next.
+> **Status: in progress.** Everything except the optional Foundation Models features is done: rule editor, validation,
+> exports, dialog designer, test harness, target picker and predicate discovery.
 > See [JOURNAL.md](JOURNAL.md) for decisions and progress.
+
+## Add a rule in 2 minutes
+
+1. **⌘N** for a new rule (or pick a built-in template and click **Duplicate to Edit**). Give it a kebab-case name.
+2. **KillProcess → Choose…**: pick the running app, drop an `.app`, or type a CLI path. The editor shows whether a
+   process with exactly that name is running (`pgrep -x`).
+3. **Rule type**:
+   - *Presence* for an app: done.
+   - *Event* to catch a specific click: **Discover…** → type the action (e.g. "Internet Accounts") → **Start Baseline**
+     → **Start Action** → do it once → **Stop**. Click **Test** on the top candidate, repeat the action, and when it
+     fires, **Use** it.
+   - *Watch & Kill* to watch an extension and kill its host.
+4. **Dialog**: pick a preset, edit the Markdown, check the **Dialog** preview; **⌘T → Simulate Dialog** shows the real
+   swiftDialog window.
+5. **⌘E** to export the plist (or `.mobileconfig`), then upload it in Jamf: *Application & Custom Settings → Upload*,
+   preference domain = the file name without `.plist`. Optionally upload `restricted-item-rule.schema.json` as the
+   custom schema.
 
 ## Rule format
 

@@ -55,6 +55,11 @@ private struct RuleForm: View {
     let store: ProjectStore
     @Binding var draft: RuleDraft
     @State private var pendingPreset: DialogPreset?
+    @State private var pickingTarget = false
+    @State private var discovering = false
+    @State private var liveTesting = false
+    @State private var syntaxResult: (ok: Bool, text: String)?
+    @State private var checkingSyntax = false
 
     private var issues: [ValidationIssue] { store.issues(for: draft) }
 
@@ -80,8 +85,22 @@ private struct RuleForm: View {
             }
 
             Section("What to kill") {
-                field("KillProcess", .killProcess, prompt: "System Settings", text: $draft.rule.killProcess)
-                Text("The exact process name, as pgrep -x sees it. Full names match and may contain spaces.")
+                HStack(alignment: .firstTextBaseline) {
+                    field("KillProcess", .killProcess, prompt: "System Settings", text: $draft.rule.killProcess)
+                    Button("Choose…") { pickingTarget = true }
+                        .help("Pick a running process, drop an app, or enter a command-line path")
+                }
+                .dropDestination(for: URL.self) { urls, _ in
+                    guard let url = urls.first,
+                          let target = TargetResolver.target(forBundleAt: url) ?? TargetResolver.target(forExecutablePath: url.path)
+                    else { return false }
+                    draft.rule.killProcess = target.name
+                    return true
+                }
+                if !draft.rule.killProcess.isEmpty, !draft.rule.killProcess.contains("/") {
+                    ProcessStatusLabel(name: draft.rule.killProcess)
+                }
+                Text("The exact process name, as pgrep -x sees it. Full names match and may contain spaces. Drop an app here to use its executable name.")
                     .font(.caption).foregroundStyle(.secondary)
             }
 
@@ -108,9 +127,13 @@ private struct RuleForm: View {
                 case .event:
                     field("Predicate", .predicate, prompt: #"process == "X" AND eventMessage CONTAINS "Y""#,
                           text: $draft.rule.predicate.orEmpty, axis: .vertical, monospaced: true)
+                    predicateTools
                 case .watchOneKillAnother:
                     field("WatchProcess", .watchProcess, prompt: "InternetAccountsSettingsExtension",
                           text: $draft.rule.watchProcess.orEmpty)
+                    if let watch = draft.rule.watchProcess, !watch.contains("/") {
+                        ProcessStatusLabel(name: watch)
+                    }
                 case .presence:
                     EmptyView()
                 }
@@ -160,6 +183,34 @@ private struct RuleForm: View {
             }
         }
         .formStyle(.grouped)
+        .sheet(isPresented: $pickingTarget) {
+            TargetPickerView { choice in
+                switch choice {
+                case .kill(let name):
+                    draft.rule.killProcess = name
+                case .watch(let name):
+                    draft.mode = .watchOneKillAnother
+                    draft.rule.predicate = nil
+                    draft.rule.watchProcess = name
+                case .watchAndKill(let watch, let kill):
+                    draft.mode = .watchOneKillAnother
+                    draft.rule.predicate = nil
+                    draft.rule.watchProcess = watch
+                    draft.rule.killProcess = kill
+                }
+            }
+        }
+        .sheet(isPresented: $discovering) {
+            DiscoveryView(target: draft.rule.killProcess) { predicate in
+                draft.mode = .event
+                draft.rule.watchProcess = nil
+                draft.rule.predicate = predicate
+            }
+        }
+        .sheet(isPresented: $liveTesting) {
+            PredicateLiveTestView(predicate: draft.rule.predicate ?? "")
+        }
+        .onChange(of: draft.rule.predicate) { syntaxResult = nil }
         .confirmationDialog(
             "Replace the message with the “\(pendingPreset?.rawValue ?? "")” preset?",
             isPresented: Binding(get: { pendingPreset != nil }, set: { if !$0 { pendingPreset = nil } })
@@ -176,6 +227,37 @@ private struct RuleForm: View {
     }
 
     // MARK: Pieces
+
+    private var predicateTools: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Button("Discover…") { discovering = true }
+                    .help("Record a baseline and your action, then rank log lines that only appear during the action")
+                Button("Check Syntax") {
+                    guard let predicate = draft.rule.predicate else { return }
+                    checkingSyntax = true
+                    Task {
+                        do {
+                            let error = try await ProcessRunner.shared.checkPredicate(predicate)
+                            syntaxResult = error.map { (false, $0) } ?? (true, "log stream accepts this predicate.")
+                        } catch {
+                            syntaxResult = (false, error.localizedDescription)
+                        }
+                        checkingSyntax = false
+                    }
+                }
+                .disabled(draft.rule.predicate == nil || checkingSyntax)
+                Button("Test Live…") { liveTesting = true }
+                    .disabled(draft.rule.predicate == nil)
+                if checkingSyntax { ProgressView().controlSize(.small) }
+            }
+            if let syntaxResult {
+                Label(syntaxResult.text, systemImage: syntaxResult.ok ? "checkmark.circle.fill" : "xmark.octagon.fill")
+                    .font(.caption)
+                    .foregroundStyle(syntaxResult.ok ? .green : .red)
+            }
+        }
+    }
 
     @ViewBuilder
     private func field(
